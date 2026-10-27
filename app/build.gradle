@@ -14,7 +14,20 @@ android {
         versionName '2.1'
     }
 
+    // Llave fija: así cada versión nueva se instala encima de la anterior
+    signingConfigs {
+        debug {
+            storeFile file('forte.jks')
+            storePassword 'tablero-forte'
+            keyAlias 'forte'
+            keyPassword 'tablero-forte'
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
         }
