@@ -10,8 +10,8 @@ android {
         applicationId 'mx.forte.tablero'
         minSdk 26
         targetSdk 34
-        versionCode 5
-        versionName '2.3'
+        versionCode 6
+        versionName '2.4'
     }
 
     // Llave fija: así cada versión nueva se instala encima de la anterior
@@ -39,6 +39,3 @@ android {
     }
 }
 
-dependencies {
-    implementation 'androidx.car.app:app:1.4.0'
-}

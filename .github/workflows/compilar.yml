@@ -48,6 +48,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk TableroForte.apk
-          gh release create "v2.3.${{ github.run_number }}" TableroForte.apk \
-            --title "Tablero Forte v2.3.${{ github.run_number }}" \
+          gh release create "v2.4.${{ github.run_number }}" TableroForte.apk \
+            --title "Tablero Forte v2.4.${{ github.run_number }}" \
             --notes "Instala TableroForte.apk en tu celular Android." --latest
