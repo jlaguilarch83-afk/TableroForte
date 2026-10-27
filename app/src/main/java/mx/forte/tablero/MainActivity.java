@@ -7,54 +7,82 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothSocket;
+import android.content.ActivityNotFoundException;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.media.AudioManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Looper;
+import android.provider.MediaStore;
+import android.speech.tts.TextToSpeech;
+import android.util.Base64;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Tablero Forte: muestra el tablero HTML (assets/index.html) en pantalla completa
- * y lee el auto por Bluetooth clásico con un adaptador ELM327.
+ * Tablero Forte: muestra el tablero web (assets/) en pantalla completa y lee el auto
+ * por Bluetooth clásico con un adaptador ELM327. También da a la página GPS, voz,
+ * cámara, controles de música, compartir y guardado de fotos y videos.
  *
- * Puente con la página (window.OBD):
- *   OBD.state()          -> "ok" | "off" | "noperm" | "nobt"
- *   OBD.devices()        -> JSON con los dispositivos emparejados
- *   OBD.connect(mac)     -> conecta y empieza a leer
- *   OBD.disconnect()
- *   OBD.readCodes()      -> lee códigos de falla (modo 03)
- *   OBD.askPermission()
- * La app llama de regreso a forteDash.setData({...}), forteDash.status(texto, tipo)
- * y forteDash.codes([...]).
+ * La página se sirve desde https://forte.app/ (interceptado, no sale a internet) para
+ * que la cámara funcione como en un sitio seguro.
  */
 public class MainActivity extends Activity {
 
     private static final UUID SPP = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
-    private static final int REQ_BT = 7;
+    private static final String HOST = "forte.app";
+    private static final int REQ_BT = 7, REQ_LOC = 8, REQ_CAM = 9;
 
     private WebView web;
     private BluetoothAdapter adapter;
     private volatile BluetoothSocket socket;
     private volatile boolean running = false;
     private volatile boolean wantCodes = false;
+    private volatile boolean wantClear = false;
     private volatile String connectedTo = null;
     private volatile boolean isCan = true;
     private Thread worker;
+
+    private TextToSpeech tts;
+    private boolean ttsReady = false;
+    private LocationManager locMgr;
+    private LocationListener locListener;
+    private PermissionRequest pendingCam;
+    private final Map<Integer, Object[]> files = new HashMap<>();
+    private int nextFile = 1;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -67,17 +95,78 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
-        s.setAllowFileAccess(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         web.addJavascriptInterface(new Bridge(), "OBD");
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
+                Uri u = req.getUrl();
+                if (!HOST.equals(u.getHost())) return null;
+                String path = u.getPath() == null || u.getPath().equals("/") ? "index.html" : u.getPath().substring(1);
+                try {
+                    InputStream in = getAssets().open(path);
+                    WebResourceResponse r = new WebResourceResponse(mime(path), "UTF-8", in);
+                    Map<String, String> h = new HashMap<>();
+                    h.put("Cache-Control", "no-cache");
+                    r.setResponseHeaders(h);
+                    return r;
+                } catch (Exception e) {
+                    return new WebResourceResponse("text/plain", "UTF-8", 404, "No encontrado", null, null);
+                }
+            }
+        });
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(() -> {
+                    if (has(Manifest.permission.CAMERA)) {
+                        request.grant(request.getResources());
+                    } else {
+                        pendingCam = request;
+                        requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAM);
+                    }
+                });
+            }
+        });
         setContentView(web);
 
         BluetoothManager bm = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
         adapter = bm != null ? bm.getAdapter() : null;
-        if (!hasPermission() && Build.VERSION.SDK_INT >= 31) {
+        if (Build.VERSION.SDK_INT >= 31 && !has(Manifest.permission.BLUETOOTH_CONNECT)) {
             requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQ_BT);
         }
-        web.loadUrl("file:///android_asset/index.html");
+        tts = new TextToSpeech(this, st -> {
+            if (st == TextToSpeech.SUCCESS) {
+                tts.setLanguage(new Locale("es", "MX"));
+                ttsReady = true;
+            }
+        });
+        web.loadUrl("https://" + HOST + "/index.html");
+    }
+
+    private static String mime(String p) {
+        if (p.endsWith(".html")) return "text/html";
+        if (p.endsWith(".js")) return "application/javascript";
+        if (p.endsWith(".css")) return "text/css";
+        if (p.endsWith(".png")) return "image/png";
+        if (p.endsWith(".svg")) return "image/svg+xml";
+        if (p.endsWith(".json")) return "application/json";
+        return "application/octet-stream";
+    }
+
+    private boolean has(String perm) {
+        return checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(code, perms, res);
+        boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
+        if (code == REQ_LOC && ok) startGpsInternal();
+        if (code == REQ_CAM && pendingCam != null) {
+            if (ok) pendingCam.grant(pendingCam.getResources()); else pendingCam.deny();
+            pendingCam = null;
+        }
     }
 
     @Override
@@ -100,6 +189,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         stopWorker();
+        stopGps();
+        if (tts != null) tts.shutdown();
         super.onDestroy();
     }
 
@@ -115,16 +206,134 @@ public class MainActivity extends Activity {
         js("window.forteDash&&forteDash.status(" + JSONObject.quote(text) + "," + JSONObject.quote(kind) + ")");
     }
 
-    private boolean hasPermission() {
-        return Build.VERSION.SDK_INT < 31
-                || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+    private boolean hasBtPermission() {
+        return Build.VERSION.SDK_INT < 31 || has(Manifest.permission.BLUETOOTH_CONNECT);
     }
+
+    // ---------- GPS ----------
+
+    private void startGpsInternal() {
+        if (locListener != null) return;
+        if (!has(Manifest.permission.ACCESS_FINE_LOCATION)) return;
+        locMgr = (LocationManager) getSystemService(LOCATION_SERVICE);
+        if (locMgr == null) return;
+        locListener = new LocationListener() {
+            @Override
+            public void onLocationChanged(Location l) {
+                try {
+                    JSONObject o = new JSONObject();
+                    o.put("lat", l.getLatitude());
+                    o.put("lon", l.getLongitude());
+                    if (l.hasSpeed()) o.put("speed", (double) l.getSpeed());
+                    if (l.hasBearing()) o.put("bearing", (double) l.getBearing());
+                    if (l.hasAltitude()) o.put("alt", l.getAltitude());
+                    if (l.hasAccuracy()) o.put("acc", (double) l.getAccuracy());
+                    js("window.forteDash&&forteDash.gps(" + o + ")");
+                } catch (Exception ignored) {
+                }
+            }
+
+            @Override
+            public void onStatusChanged(String p, int s, Bundle b) {
+            }
+
+            @Override
+            public void onProviderEnabled(String p) {
+            }
+
+            @Override
+            public void onProviderDisabled(String p) {
+            }
+        };
+        try {
+            locMgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locListener, Looper.getMainLooper());
+        } catch (SecurityException | IllegalArgumentException e) {
+            locListener = null;
+        }
+    }
+
+    private void stopGps() {
+        try {
+            if (locMgr != null && locListener != null) locMgr.removeUpdates(locListener);
+        } catch (Exception ignored) {
+        }
+        locListener = null;
+    }
+
+    // ---------- Guardar fotos y videos ----------
+
+    private int beginFile(String kind, String name, String mimeType) throws Exception {
+        boolean video = "video".equals(kind);
+        Uri uri = null;
+        File file = null;
+        OutputStream out;
+        if (Build.VERSION.SDK_INT >= 29) {
+            ContentValues cv = new ContentValues();
+            cv.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            cv.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+            cv.put(MediaStore.MediaColumns.RELATIVE_PATH, (video ? Environment.DIRECTORY_MOVIES : Environment.DIRECTORY_PICTURES) + "/TableroForte");
+            cv.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            Uri col = video ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+            uri = getContentResolver().insert(col, cv);
+            if (uri == null) throw new Exception("sin acceso al almacenamiento");
+            out = getContentResolver().openOutputStream(uri);
+        } else {
+            File dir = new File(getExternalFilesDir(video ? Environment.DIRECTORY_MOVIES : Environment.DIRECTORY_PICTURES), "TableroForte");
+            if (!dir.exists() && !dir.mkdirs()) throw new Exception("no se pudo crear la carpeta");
+            file = new File(dir, name);
+            out = new FileOutputStream(file);
+        }
+        if (out == null) throw new Exception("sin acceso al archivo");
+        synchronized (files) {
+            int id = nextFile++;
+            files.put(id, new Object[]{out, uri, file, kind, name});
+            return id;
+        }
+    }
+
+    private void endFile(int id, int keep) throws Exception {
+        Object[] f;
+        synchronized (files) {
+            f = files.remove(id);
+        }
+        if (f == null) return;
+        ((OutputStream) f[0]).close();
+        Uri uri = (Uri) f[1];
+        File file = (File) f[2];
+        String kind = (String) f[3];
+        if (uri != null && Build.VERSION.SDK_INT >= 29) {
+            ContentValues cv = new ContentValues();
+            cv.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            getContentResolver().update(uri, cv, null, null);
+        }
+        if ("video".equals(kind) && keep > 0) {
+            // grabación en ciclo: se borran los videos más viejos que guardó esta app
+            SharedPreferences sp = getSharedPreferences("forte", MODE_PRIVATE);
+            JSONArray list = new JSONArray(sp.getString("videos", "[]"));
+            list.put(uri != null ? uri.toString() : file.getAbsolutePath());
+            while (list.length() > keep) {
+                String old = list.getString(0);
+                try {
+                    if (old.startsWith("content:")) getContentResolver().delete(Uri.parse(old), null, null);
+                    else new File(old).delete();
+                } catch (Exception ignored) {
+                }
+                JSONArray rest = new JSONArray();
+                for (int i = 1; i < list.length(); i++) rest.put(list.get(i));
+                list = rest;
+            }
+            sp.edit().putString("videos", list.toString()).apply();
+        }
+        js("window.forteDash&&forteDash.saved(" + JSONObject.quote(kind) + "," + JSONObject.quote((String) f[4]) + ")");
+    }
+
+    // ---------- Puente con la página ----------
 
     public class Bridge {
         @JavascriptInterface
         public String state() {
             if (adapter == null) return "nobt";
-            if (!hasPermission()) return "noperm";
+            if (!hasBtPermission()) return "noperm";
             if (!adapter.isEnabled()) return "off";
             return "ok";
         }
@@ -134,7 +343,7 @@ public class MainActivity extends Activity {
         public String devices() {
             JSONArray arr = new JSONArray();
             try {
-                if (adapter == null || !hasPermission()) return arr.toString();
+                if (adapter == null || !hasBtPermission()) return arr.toString();
                 Set<BluetoothDevice> set = adapter.getBondedDevices();
                 if (set == null) return arr.toString();
                 for (BluetoothDevice d : set) {
@@ -177,6 +386,99 @@ public class MainActivity extends Activity {
                 return;
             }
             wantCodes = true;
+        }
+
+        @JavascriptInterface
+        public void clearCodes() {
+            if (connectedTo == null) {
+                status("Conecta el OBD para borrar fallas", "off");
+                js("window.forteDash&&forteDash.cleared(false)");
+                return;
+            }
+            wantClear = true;
+        }
+
+        @JavascriptInterface
+        public void speak(String text) {
+            if (ttsReady && text != null) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "forte");
+        }
+
+        @JavascriptInterface
+        public void media(String action) {
+            int key = "next".equals(action) ? KeyEvent.KEYCODE_MEDIA_NEXT
+                    : "prev".equals(action) ? KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                    : KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
+            AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (am == null) return;
+            am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, key));
+            am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, key));
+        }
+
+        @JavascriptInterface
+        public void share(final String text) {
+            runOnUiThread(() -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_TEXT, text);
+                i.setPackage("com.whatsapp");
+                try {
+                    startActivity(i);
+                } catch (ActivityNotFoundException e) {
+                    i.setPackage(null);
+                    startActivity(Intent.createChooser(i, "Compartir viaje"));
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void startGps() {
+            runOnUiThread(() -> {
+                if (has(Manifest.permission.ACCESS_FINE_LOCATION)) startGpsInternal();
+                else requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOC);
+            });
+        }
+
+        @JavascriptInterface
+        public boolean hasCamera() {
+            return has(Manifest.permission.CAMERA);
+        }
+
+        @JavascriptInterface
+        public void askCamera() {
+            runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAM));
+        }
+
+        @JavascriptInterface
+        public int fileBegin(String kind, String name, String mimeType) {
+            try {
+                return beginFile(kind, name, mimeType);
+            } catch (Exception e) {
+                js("window.forteDash&&forteDash.camError(" + JSONObject.quote(String.valueOf(e.getMessage())) + ")");
+                return -1;
+            }
+        }
+
+        @JavascriptInterface
+        public void fileAppend(int id, String b64) {
+            Object[] f;
+            synchronized (files) {
+                f = files.get(id);
+            }
+            if (f == null) return;
+            try {
+                ((OutputStream) f[0]).write(Base64.decode(b64, Base64.DEFAULT));
+            } catch (Exception e) {
+                js("window.forteDash&&forteDash.camError(" + JSONObject.quote(String.valueOf(e.getMessage())) + ")");
+            }
+        }
+
+        @JavascriptInterface
+        public void fileEnd(int id, int keep) {
+            try {
+                endFile(id, keep);
+            } catch (Exception e) {
+                js("window.forteDash&&forteDash.camError(" + JSONObject.quote(String.valueOf(e.getMessage())) + ")");
+            }
         }
     }
 
@@ -325,6 +627,12 @@ public class MainActivity extends Activity {
             }
             if (o.length() > 0) js("window.forteDash&&forteDash.setData(" + o + ")");
 
+            if (wantClear) {
+                wantClear = false;
+                String r = clean(send(in, out, "04", 5000));
+                boolean ok = r.contains("44");
+                js("window.forteDash&&forteDash.cleared(" + ok + ")");
+            }
             if (wantCodes) {
                 wantCodes = false;
                 String raw = send(in, out, "03", 5000);

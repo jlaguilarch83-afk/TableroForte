@@ -24,6 +24,15 @@ App Android que muestra el tablero digital y lee tu Kia Forte 2020 con el adapta
 3. Toca el botón de arriba a la izquierda, elige tu OBDII. La próxima vez se conecta solo.
 4. Pestaña **Fallas** › Leer fallas para ver códigos del check engine.
 
+## Qué trae (versión 2.0)
+- 20 diseños de tablero (menú › Diseños).
+- Viaje y compartir por WhatsApp, mapa del viaje con GPS, clima con amanecer y atardecer.
+- 0 a 100 km/h, cuarto de milla, fuerza G, calificación de manejo, inclinómetro.
+- Alertas con voz: velocidad, gasolina baja, motor caliente, auto encendido sin moverse, batería baja.
+- Modo valet con PIN, modo HUD para el parabrisas, bitácora de gasolina, aceite.
+- Dashcam: fotos y video en ciclo (Imágenes y Películas › TableroForte).
+- Controles de música y lectura/borrado de códigos de falla.
+
 ## Datos que lee
 RPM, velocidad, carga del motor, acelerador, temperatura del refrigerante,
 aire de admisión, voltaje, nivel de gasolina y temperatura exterior (si el auto los reporta),
@@ -31,4 +40,4 @@ y consumo calculado con el sensor MAF o, si no tiene, con la presión del múlti
 La posición de la palanca (P R N D) no viene en el OBD estándar.
 
 ## Cambiar el diseño
-Todo el tablero está en `app/src/main/assets/index.html`. Edítalo y vuelve a compilar.
+El tablero está en `app/src/main/assets/` (core.js datos, skins.js diseños, pano.js diseño azul, ui.js menú). Edita y vuelve a compilar.
