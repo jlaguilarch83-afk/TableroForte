@@ -31,7 +31,15 @@ const DEF = {
 F.cfg = Object.assign({}, DEF, F.store('forte-ajustes') || {});
 F.cfg.valet = Object.assign({}, DEF.valet, F.cfg.valet || {});
 F.cfg.nivel = Object.assign({}, DEF.nivel, F.cfg.nivel || {});
-F.save = () => F.store('forte-ajustes', F.cfg);
+F.save = () => {
+  F.store('forte-ajustes', F.cfg);
+  // el servicio de la app habla las alertas aunque la pantalla esté apagada o en Android Auto
+  if (window.OBD && OBD.config) {
+    const c = F.cfg;
+    OBD.config(JSON.stringify({ limite: c.valet.on ? c.valet.limite : c.limite, gasAviso: c.gasAviso, estacionadoMin: c.estacionadoMin, voz: c.voz }));
+  }
+};
+F.save();
 
 /* ---------- estado del auto ---------- */
 F.S = { rpm: 720, speed: 0, coolant: 52, volt: 14.1, throttle: 0, load: 18, intake: 31, maf: 3.5, fuel: 62, ambient: 24.5 };
@@ -41,6 +49,21 @@ F.conn = { text: F.app ? 'Toca para conectar' : 'Simulación', kind: F.app ? 'of
 F.codes = null;
 
 F.oil = F.store('forte-aceite') || { km: 1850, intervalo: 5000 };
+// en la app el aceite lo lleva el servicio (sigue contando con la pantalla apagada)
+F.oilSync = function () {
+  if (!(window.OBD && OBD.oilGet)) return;
+  try {
+    const o = JSON.parse(OBD.oilGet());
+    if (!o.set) OBD.oilSet(F.oil.km, F.oil.intervalo);
+    else { F.oil.km = o.km; F.oil.intervalo = o.intervalo; }
+  } catch (e) {}
+};
+F.oilSave = function () {
+  F.store('forte-aceite', F.oil);
+  if (window.OBD && OBD.oilSet) OBD.oilSet(F.oil.km, F.oil.intervalo);
+};
+F.oilSync();
+setInterval(F.oilSync, 5000);
 F.newTrip = () => ({ km: 0, litros: 0, seg: 0, mov: 0, inicio: Date.now(), vmax: 0, ruta: [] });
 F.trip = F.newTrip();
 F.perf = Object.assign({ c100: null, b100: null, qm: null, bqm: null, trap: null }, F.store('forte-tiempos') || {});
@@ -90,9 +113,11 @@ F.speak = function (t) {
   if (window.OBD && OBD.speak) { try { OBD.speak(t); } catch (e) {} return; }
   try { const u = new SpeechSynthesisUtterance(t); u.lang = 'es-MX'; speechSynthesis.speak(u); } catch (e) {}
 };
+const VOZ_SERVICIO = new Set(['vel', 'gas', 'cal', 'idle', 'bat']);
 F.alert = function (id, text, kind, voz) {
   F.emit('alert', { id, text, kind: kind || 'warn' });
-  if (voz) F.speak(voz === true ? text : voz);
+  // en la app estas alertas las dice el servicio, para no repetirlas
+  if (voz && !(F.app && VOZ_SERVICIO.has(id))) F.speak(voz === true ? text : voz);
 };
 
 /* ---------- simulación ---------- */
@@ -297,7 +322,7 @@ function frame(now) {
   T.km += S.speed * dt / 3600; T.seg += dt; if (S.speed > 1) T.mov += dt;
   if (lh != null) T.litros += lh * dt / 3600;
   if (S.speed > T.vmax) T.vmax = S.speed;
-  if (!F.sim) { F.oil.km += S.speed * dt / 3600; guardar += dt; if (guardar > 15) { guardar = 0; F.store('forte-aceite', F.oil); } }
+  if (!F.sim && !F.app) { F.oil.km += S.speed * dt / 3600; guardar += dt; if (guardar > 15) { guardar = 0; F.store('forte-aceite', F.oil); } }
   histAcc += dt;
   while (histAcc >= .1) {
     histAcc -= .1; const H = F.hist, i = H.i % HN;
@@ -312,6 +337,13 @@ function frame(now) {
 F.start = () => requestAnimationFrame(t => { ultimo = t; frame(t); });
 
 /* ---------- acciones ---------- */
+F.batteryLog = function () {
+  if (window.OBD && OBD.batteryLog) { try { return JSON.parse(OBD.batteryLog()); } catch (e) { return []; } }
+  const d = Date.now(), h = 3600e3;
+  return [{ t: d - 50 * h, tipo: 'reposo', v: 12.55 }, { t: d - 50 * h + 6e4, tipo: 'arranque', v: 10.4 }, { t: d - 49.9 * h, tipo: 'carga', v: 14.3 },
+          { t: d - 26 * h, tipo: 'reposo', v: 12.31 }, { t: d - 26 * h + 6e4, tipo: 'arranque', v: 9.9 }, { t: d - 25.9 * h, tipo: 'carga', v: 14.2 },
+          { t: d - 2 * h, tipo: 'reposo', v: 12.12 }, { t: d - 2 * h + 6e4, tipo: 'arranque', v: 9.5 }, { t: d - 1.9 * h, tipo: 'carga', v: 14.1 }];
+};
 F.readCodes = () => {
   if (window.OBD) OBD.readCodes();
   else setTimeout(() => window.forteDash.codes(['P0420']), 600);

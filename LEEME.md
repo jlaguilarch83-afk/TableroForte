@@ -33,6 +33,17 @@ App Android que muestra el tablero digital y lee tu Kia Forte 2020 con el adapta
 - Dashcam: fotos y video en ciclo (Imágenes y Películas › TableroForte).
 - Controles de música y lectura/borrado de códigos de falla.
 
+## Android Auto (versión 2.1)
+La app aparece en la pantalla del auto con velocidad, RPM, motor, gasolina, batería, rendimiento y alertas.
+Como no viene de la Play Store, hay que activarla una vez:
+1. En el teléfono abre **Android Auto** (Ajustes › Dispositivos conectados › Android Auto).
+2. Toca 10 veces **Versión** hasta que diga que activaste el modo de desarrollador.
+3. Menú de tres puntos › **Configuración para desarrolladores** › activa **Fuentes desconocidas**.
+4. Conecta al auto: Tablero Forte aparece en el menú de apps de Android Auto.
+
+Las alertas con voz (velocidad, gasolina, aceite, temperatura y batería) siguen funcionando
+con la pantalla del teléfono apagada y se oyen por las bocinas del auto.
+
 ## Datos que lee
 RPM, velocidad, carga del motor, acelerador, temperatura del refrigerante,
 aire de admisión, voltaje, nivel de gasolina y temperatura exterior (si el auto los reporta),

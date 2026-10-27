@@ -6,6 +6,7 @@
   --font:"Saira","Arial Narrow",system-ui,sans-serif;
   color-scheme:dark;
 }
+[hidden]{display:none!important}
 html,body{height:100%}
 body{margin:0;background:var(--void);color:var(--fg);font-family:var(--font);overflow:hidden;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
@@ -78,6 +79,10 @@ html.hud #stage{transform:scaleY(-1)}
 .skin{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:12px;padding:6px;background:rgba(5,10,24,.6);cursor:pointer;text-align:left;font-size:13px;font-weight:600}
 .skin canvas{width:100%;height:auto;aspect-ratio:320/124;border-radius:8px;display:block;background:#000}
 .skin.on{border-color:var(--ice);box-shadow:0 0 0 2px var(--ice)}
+.bigval{font-size:46px;font-weight:700;font-stretch:112%;font-variant-numeric:tabular-nums;line-height:1}
+.bigval small{font-size:20px;color:var(--label)}
+#dBody .g{color:var(--ok)}#dBody .a{color:var(--warn)}#dBody .r{color:var(--crit)}
+.tips li{display:block;line-height:1.45}
 .gcv{width:min(260px,100%);height:auto;align-self:center}
 .mbig{display:flex;justify-content:center;gap:14px}
 .mbig button{width:76px;height:76px;border-radius:50%;border:1px solid var(--line);background:rgba(47,123,255,.15);display:grid;place-items:center;cursor:pointer}

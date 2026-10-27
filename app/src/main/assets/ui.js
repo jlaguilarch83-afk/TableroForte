@@ -80,7 +80,7 @@ ui.toast = toast;
 
 /* ---------- menú ---------- */
 const SECCIONES = [
-  ['disenos', 'Diseños'], ['conexion', 'Conexión OBD'], ['viaje', 'Viaje'], ['mapa', 'Mapa del viaje'],
+  ['disenos', 'Diseños'], ['conexion', 'Conexión OBD'], ['bateria', 'Batería'], ['viaje', 'Viaje'], ['mapa', 'Mapa del viaje'],
   ['herramientas', 'Arrancadas y fuerza G'], ['fallas', 'Fallas'], ['aceite', 'Aceite'], ['gasolina', 'Bitácora de gasolina'],
   ['camara', 'Cámara (dashcam)'], ['musica', 'Música'], ['alertas', 'Alertas y valet'], ['clima', 'Clima'], ['ajustes', 'Ajustes']
 ];
@@ -148,6 +148,41 @@ const PANELES = {
     }
     body.innerHTML = h;
     if ($('perm')) $('perm').onclick = () => OBD.askPermission();
+  },
+
+  bateria() {
+    const tipoTxt = { reposo: 'En reposo (auto apagado)', arranque: 'Al arrancar (mínimo)', carga: 'Con el motor encendido' };
+    const hora = t => new Date(t).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    const reposoTxt = v => v >= 12.6 ? ['Llena', 'g'] : v >= 12.4 ? ['Alrededor de 75 %', 'g'] : v >= 12.2 ? ['Alrededor de 50 %', 'a'] : v >= 12.0 ? ['Alrededor de 25 %', 'r'] : ['Descargada', 'r'];
+    const arranqueTxt = v => v >= 10 ? ['Bien', 'g'] : v >= 9.6 ? ['Regular', 'a'] : ['Débil', 'r'];
+    const cargaTxt = v => v >= 13.2 ? ['Cargando bien', 'g'] : v >= 12.4 ? ['Carga baja (normal en Kia a velocidad constante)', 'a'] : ['No está cargando', 'r'];
+    const paint = () => {
+      const v = F.D.volt, on = F.S.rpm >= 400, log = F.batteryLog(), ult = t => log.filter(e => e.tipo === t).slice(-1)[0];
+      let ahora = '—', cls = '';
+      if (v != null) { const [txt, c] = on ? cargaTxt(v) : (F.S.rpm < 100 ? reposoTxt(v) : ['Encendido sin arrancar', 'a']); ahora = txt; cls = c; }
+      const res = (e, f) => e ? `${n(e.v, 2)} V · <span class="${f(e.v)[1]}">${f(e.v)[0]}</span>` : '—';
+      body.querySelector('.bnow').innerHTML =
+        `<div class="bigval">${n(v, 2)}<small> V</small></div><p class="note"><span class="${cls}">${ahora}</span>${on ? ' · motor encendido' : ''}</p>` +
+        kv('Último reposo', res(ult('reposo'), reposoTxt)) + kv('Último arranque', res(ult('arranque'), arranqueTxt)) + kv('Con motor encendido', res(ult('carga'), cargaTxt));
+      const rep = log.filter(e => e.tipo === 'reposo');
+      let tendencia = '';
+      if (rep.length >= 2) {
+        const a = rep[rep.length - 2], b = rep[rep.length - 1];
+        if (b.v < a.v - .15) tendencia = `<p class="note warnbox">El voltaje en reposo bajó de ${n(a.v, 2)} a ${n(b.v, 2)} V. Algo la está descargando con el auto apagado.</p>`;
+      }
+      body.querySelector('.btrend').innerHTML = tendencia;
+      body.querySelector('.blog').innerHTML = log.length ? '<ul class="list">' + log.slice(-15).reverse().map(e =>
+        `<li><span>${hora(e.t)} · ${tipoTxt[e.tipo] || e.tipo}</span><b>${n(e.v, 2)} V</b></li>`).join('') + '</ul>' : '<p class="note">Todavía no hay registros. Se guardan solos cada vez que conectas el OBD con el auto apagado, al arrancar y con el motor encendido.</p>';
+    };
+    body.innerHTML = '<div class="bnow"></div><div class="btrend"></div>' +
+      '<h3>Cómo medirla bien</h3><p class="note">Por la mañana, antes de arrancar, abre la app con la llave en ON sin encender el motor o con el auto apagado: guarda el voltaje en reposo. Luego arranca: guarda cuánto bajó al arrancar.</p>' +
+      '<h3>Si se descarga muy pronto</h3><ul class="list tips">' +
+      '<li>Desconecta el adaptador OBD al estacionarte. Los ELM327 baratos se quedan prendidos y descargan la batería en pocos días.</li>' +
+      '<li>Revisa luces de cajuela, guantera o cortesía que se queden encendidas, y accesorios conectados siempre (cámaras, cargadores).</li>' +
+      '<li>Si al arrancar baja de 9.6 V, la batería ya está débil; si tiene más de 3 o 4 años, conviene una prueba de carga en una refaccionaria.</li>' +
+      '<li>Bornes sulfatados (polvo blanco o verde) también hacen que no cargue bien.</li></ul>' +
+      '<h3>Registro</h3><div class="blog"></div>';
+    paint(); const iv = setInterval(() => { if (seccion !== 'bateria') return clearInterval(iv); paint(); }, 1000);
   },
 
   viaje() {
@@ -224,8 +259,8 @@ const PANELES = {
        <label>Cambiar cada (km)<input id="oInt" type="number" min="500" step="500" inputmode="numeric" value="${F.oil.intervalo}"></label>` +
       btn('oSave', 'Guardar', 'pri') + btn('oNow', 'Ya cambié el aceite hoy');
     $('oSave').onclick = () => { const k = parseFloat($('oKm').value), i = parseFloat($('oInt').value);
-      if (isFinite(k) && k >= 0) F.oil.km = k; if (isFinite(i) && i >= 500) F.oil.intervalo = i; F.store('forte-aceite', F.oil); toast('Aceite guardado'); render(); };
-    $('oNow').onclick = () => { F.oil.km = 0; F.store('forte-aceite', F.oil); toast('Listo, contador en cero'); render(); };
+      if (isFinite(k) && k >= 0) F.oil.km = k; if (isFinite(i) && i >= 500) F.oil.intervalo = i; F.oilSave(); toast('Aceite guardado'); render(); };
+    $('oNow').onclick = () => { F.oil.km = 0; F.oilSave(); toast('Listo, contador en cero'); render(); };
   },
 
   gasolina() {
@@ -291,6 +326,7 @@ const PANELES = {
       <label>Avisar cuando la gasolina baje de (%)<input id="aGas" type="number" min="5" max="50" step="1" inputmode="numeric" value="${c.gasAviso}"></label>
       <label>Avisar si el auto está encendido sin moverse por (min)<input id="aIdle" type="number" min="1" max="60" inputmode="numeric" value="${c.estacionadoMin}"></label>
       <label class="chk"><input id="aVoz" type="checkbox"${c.voz ? ' checked' : ''}> Avisos con voz</label>` + btn('aSave', 'Guardar', 'pri') +
+      `<p class="note">${F.app ? 'Las alertas de voz siguen funcionando con la pantalla del teléfono apagada y en Android Auto. Al conectar, también te avisa si ya toca cambio de aceite.' : 'En la app, las alertas de voz siguen funcionando con la pantalla apagada y en Android Auto.'}</p>` +
       `<h3>Modo valet</h3><p class="note">Para cuando alguien más maneja tu auto: avisa si pasa el límite y guarda cada vez que lo hizo. Se quita solo con tu PIN.</p>` +
       (va.on ? `<p class="warnbox note">Modo valet activo · límite ${va.limite} km/h</p><label>PIN para desactivar<input id="vPin" type="password" inputmode="numeric" maxlength="6"></label>${btn('vOff', 'Desactivar y ver registro', 'pri')}`
              : `<label>Límite para el valet (km/h)<input id="vLim" type="number" min="20" step="5" inputmode="numeric" value="${va.limite}"></label>
