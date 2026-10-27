@@ -52,7 +52,7 @@ public class ObdService extends Service {
     static volatile ObdService instance;
 
     // último estado conocido, para quien se conecte después
-    static volatile String statusText = "Sin conectar";
+    static volatile String statusText = "Sin conectar · toca aquí";
     static volatile String statusKind = "off";
     static final Map<String, Double> last = new HashMap<>();
     static volatile String alertText = null;

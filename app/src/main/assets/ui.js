@@ -59,7 +59,7 @@ const ICON = {
 $('btnMenu').innerHTML = ICON.menu;
 $('mPrev').innerHTML = ICON.prev; $('mPlay').innerHTML = ICON.play; $('mNext').innerHTML = ICON.next;
 $('btnShot').innerHTML = ICON.cam;
-$('musicBar').hidden = !F.app;
+$('musicBar').hidden = !F.app || F.cfg.musica === false;
 const media = a => { if (window.OBD && OBD.media) OBD.media(a); };
 $('mPrev').onclick = () => media('prev'); $('mPlay').onclick = () => media('play'); $('mNext').onclick = () => media('next');
 $('btnMenu').onclick = () => ui.open();
@@ -367,11 +367,16 @@ const PANELES = {
       `<h3>Pantalla</h3><label class="chk"><input id="sHud" type="checkbox"${c.hud ? ' checked' : ''}> Modo HUD (para reflejar en el parabrisas)</label>
        <p class="note">Pon el teléfono acostado en el tablero, con la parte de arriba hacia el parabrisas, y baja el brillo de la cabina. Úsalo de noche.</p>
        <label class="chk"><input id="sBien" type="checkbox"${c.bienvenida ? ' checked' : ''}> Animación de bienvenida al abrir</label>` +
+      (F.app ? `<label class="chk"><input id="sMus" type="checkbox"${c.musica !== false ? ' checked' : ''}> Botones de música arriba (anterior, reproducir, siguiente)</label>
+       <label class="chk"><input id="sDemo" type="checkbox"${c.demo ? ' checked' : ''}> Modo demostración (datos de ejemplo, sin el auto)</label>
+       <p class="note">Apágalo para ver solo los datos reales del auto. Al cambiarlo, el tablero se reinicia.</p>` : '') +
       (F.app ? '' : btn('sFs', 'Pantalla completa')) + btn('sWel', 'Ver bienvenida') +
       '<p class="note">Tablero Forte 2.0 · datos por OBD-II con ELM327.</p>';
     $('sSave').onclick = () => { const v = parseFloat($('sPre').value); if (isFinite(v) && v >= 0) { c.precio = v; F.save(); toast('Precio guardado'); } };
     $('sHud').onchange = e => { c.hud = e.target.checked; F.save(); aplicarHud(); };
     $('sBien').onchange = e => { c.bienvenida = e.target.checked; F.save(); };
+    if ($('sMus')) $('sMus').onchange = e => { c.musica = e.target.checked; F.save(); $('musicBar').hidden = !c.musica; };
+    if ($('sDemo')) $('sDemo').onchange = e => { c.demo = e.target.checked; F.save(); location.reload(); };
     if ($('sFs')) $('sFs').onclick = () => { document.fullscreenElement ? document.exitFullscreen().catch(() => {}) : document.documentElement.requestFullscreen?.().catch(() => {}); };
     $('sWel').onclick = () => { ui.close(); bienvenida(true); };
   }

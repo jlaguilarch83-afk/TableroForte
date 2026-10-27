@@ -23,7 +23,7 @@ F.emit = (ev, a) => { (handlers[ev] || []).forEach(fn => { try { fn(a); } catch 
 
 /* ---------- ajustes ---------- */
 const DEF = {
-  skin: 'pano', precio: 24.5, voz: true, hud: false, bienvenida: true,
+  skin: 'pano', precio: 24.5, voz: true, hud: false, bienvenida: true, demo: false, musica: true,
   limite: 0, gasAviso: 15, estacionadoMin: 5,
   valet: { on: false, pin: '', limite: 80 },
   nivel: { pitch: 0, roll: 0 }
@@ -42,9 +42,11 @@ F.save = () => {
 F.save();
 
 /* ---------- estado del auto ---------- */
-F.S = { rpm: 720, speed: 0, coolant: 52, volt: 14.1, throttle: 0, load: 18, intake: 31, maf: 3.5, fuel: 62, ambient: 24.5 };
+// En la app sin conexión todo marca cero; la simulación solo corre en la vista previa o en modo demostración.
+F.sim = !F.app || !!F.cfg.demo;
+F.S = F.sim ? { rpm: 720, speed: 0, coolant: 52, volt: 14.1, throttle: 0, load: 18, intake: 31, maf: 3.5, fuel: 62, ambient: 24.5 }
+            : { rpm: 0, speed: 0, coolant: null, volt: null, throttle: 0, load: 0, intake: null, maf: null, fuel: null, ambient: null };
 F.D = Object.assign({}, F.S);
-F.sim = true;
 F.conn = { text: F.app ? 'Toca para conectar' : 'Simulación', kind: F.app ? 'off' : 'sim' };
 F.codes = null;
 
@@ -88,7 +90,12 @@ window.forteDash = {
     }
     for (const k in obj) if (typeof obj[k] === 'number' && isFinite(obj[k])) F.S[k] = obj[k];
   },
-  status(text, kind) { F.conn = { text, kind: kind || 'busy' }; F.emit('conn', F.conn); },
+  status(text, kind) {
+    F.conn = { text, kind: kind || 'busy' };
+    // sin conexión, nada se queda marcando el último valor
+    if (!F.sim && F.conn.kind !== 'ok') Object.assign(F.S, { speed: 0, rpm: 0, throttle: 0, load: 0, maf: null });
+    F.emit('conn', F.conn);
+  },
   codes(list) { F.codes = list; F.emit('codes', list); },
   cleared(ok) { F.emit('cleared', ok); },
   gps(g) {
