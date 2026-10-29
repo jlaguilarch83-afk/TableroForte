@@ -15,6 +15,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.WindowManager;
@@ -44,6 +46,32 @@ public class WatchActivity extends Activity implements DataClient.OnDataChangedL
     };
     private float rotAcum = 0;
     private float downY = Float.NaN, downX = Float.NaN;
+    private boolean largo = false;
+    private final Runnable presionLarga = () -> {
+        largo = true;
+        marcarTope();
+    };
+
+    /** Mantener presionado: el teléfono guarda un tope donde vas. */
+    private void marcarTope() {
+        Vibrator vib = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+        if (vib != null) vib.vibrate(VibrationEffect.createWaveform(new long[]{0, 120, 80, 120}, -1));
+        view.msg = "Enviando tope…";
+        view.msgUntil = System.currentTimeMillis() + 2500;
+        view.invalidate();
+        Wearable.getNodeClient(this).getConnectedNodes().addOnSuccessListener(nodes -> {
+            if (nodes.isEmpty()) {
+                view.msg = "Sin teléfono cerca";
+            } else {
+                for (com.google.android.gms.wearable.Node n : nodes) {
+                    Wearable.getMessageClient(this).sendMessage(n.getId(), "/forte/tope", new byte[0]);
+                }
+                view.msg = "Tope marcado";
+            }
+            view.msgUntil = System.currentTimeMillis() + 2000;
+            view.invalidate();
+        });
+    }
 
     // ubicación y brújula para "Mi carro"
     private LocationManager lm;
@@ -174,8 +202,23 @@ public class WatchActivity extends Activity implements DataClient.OnDataChangedL
             case MotionEvent.ACTION_DOWN:
                 downY = ev.getY();
                 downX = ev.getX();
+                largo = false;
+                handler.postDelayed(presionLarga, 700);
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (!Float.isNaN(downY) && (Math.abs(ev.getY() - downY) > 25 || Math.abs(ev.getX() - downX) > 25)) handler.removeCallbacks(presionLarga);
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                handler.removeCallbacks(presionLarga);
+                downY = Float.NaN;
                 break;
             case MotionEvent.ACTION_UP:
+                handler.removeCallbacks(presionLarga);
+                if (largo) {
+                    largo = false;
+                    downY = Float.NaN;
+                    break;
+                }
                 if (!Float.isNaN(downY)) {
                     float dy = ev.getY() - downY, dx = ev.getX() - downX;
                     float min = view.getHeight() * .15f;

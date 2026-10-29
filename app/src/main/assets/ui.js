@@ -464,7 +464,7 @@ function camFoto() {
   const fl = $('flash'); fl.hidden = false; setTimeout(() => { fl.hidden = true; }, 150);
 }
 $('btnShot').onclick = camFoto;
-ui.camStart = camStart; ui.camFoto = camFoto; ui.recStart = recStart; ui.recStop = recStop; ui.cam = cam;
+ui.camStart = camStart; ui.camFoto = camFoto; ui.recStart = recStart; ui.recStop = recStop; ui.cam = cam; ui.guardar = (b, k, nm, m) => guardar(b, k, nm, m); ui.stamp = () => stamp();
 function recStart() {
   if (!cam.stream || cam.rec) return;
   cam.mime = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp8', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';

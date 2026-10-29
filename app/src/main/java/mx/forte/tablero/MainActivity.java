@@ -77,6 +77,10 @@ public class MainActivity extends Activity implements ObdService.Listener {
     private final Map<Integer, Object[]> files = new HashMap<>();
     private int nextFile = 1;
 
+    private final com.google.android.gms.wearable.MessageClient.OnMessageReceivedListener relojListener = ev -> {
+        if ("/forte/tope".equals(ev.getPath())) js("window.forteDash&&forteDash.watchTope&&forteDash.watchTope()");
+    };
+
     // sensor de luz: activa el modo noche y los faros en pantalla
     private SensorManager sensores;
     private long lastLux = 0;
@@ -176,6 +180,8 @@ public class MainActivity extends Activity implements ObdService.Listener {
         if (Build.VERSION.SDK_INT >= 33 && !has(Manifest.permission.POST_NOTIFICATIONS)) pedir.add(Manifest.permission.POST_NOTIFICATIONS);
         if (!pedir.isEmpty()) requestPermissions(pedir.toArray(new String[0]), REQ_BT);
         ObdService.listeners.add(this);
+        // botón de bache desde el reloj
+        com.google.android.gms.wearable.Wearable.getMessageClient(this).addListener(relojListener);
         tts = new TextToSpeech(this, st -> {
             if (st == TextToSpeech.SUCCESS) {
                 tts.setLanguage(new Locale("es", "MX"));
@@ -242,6 +248,7 @@ public class MainActivity extends Activity implements ObdService.Listener {
     @Override
     protected void onDestroy() {
         ObdService.listeners.remove(this);
+        com.google.android.gms.wearable.Wearable.getMessageClient(this).removeListener(relojListener);
         stopGps();
         if (tts != null) tts.shutdown();
         super.onDestroy();
@@ -343,7 +350,7 @@ public class MainActivity extends Activity implements ObdService.Listener {
     // ---------- Guardar fotos y videos ----------
 
     private int beginFile(String kind, String name, String mimeType) throws Exception {
-        boolean video = "video".equals(kind);
+        boolean video = "video".equals(kind) || "evento".equals(kind);
         Uri uri = null;
         File file = null;
         OutputStream out;

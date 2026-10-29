@@ -54,6 +54,8 @@ public class DashView extends View {
     private final RectF r = new RectF();
     int face = 0;
     long nameUntil = 0;
+    String msg = null;
+    long msgUntil = 0;
     // brújula y ubicación del reloj (para "Mi carro")
     double myLat = Double.NaN, myLon = Double.NaN;
     float azimut = Float.NaN;
@@ -149,10 +151,18 @@ public class DashView extends View {
         alerta(c, s, cx, cy);
         if (System.currentTimeMillis() < nameUntil) {
             p.setStyle(Paint.Style.FILL);
-            p.setColor(0xCC000000);
-            r.set(cx - s * .36f, cy + s * .36f, cx + s * .36f, cy + s * .46f);
+            p.setColor(0xEE10141C);
+            r.set(cx - s * .38f, cy + s * .29f, cx + s * .38f, cy + s * .46f);
             c.drawRoundRect(r, s * .05f, s * .05f, p);
             text(c, nombre(face) + "  " + (face + 1) + "/" + total(), cx, cy + s * .425f, s * .045f, Color.WHITE);
+            text(c, "Mantén presionado: marcar tope", cx, cy + s * .345f, s * .038f, 0xFF8FB0E6);
+        }
+        if (msg != null && System.currentTimeMillis() < msgUntil) {
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xF0157A3A);
+            r.set(cx - s * .38f, cy - s * .08f, cx + s * .38f, cy + s * .08f);
+            c.drawRoundRect(r, s * .06f, s * .06f, p);
+            text(c, msg, cx, cy + s * .025f, s * .065f, Color.WHITE);
         }
     }
 

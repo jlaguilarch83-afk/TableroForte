@@ -306,7 +306,7 @@ async function iniciarDeteccion() {
       await cargarScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js');
       await cargarScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
     }
-    modelo = modelo || await window.cocoSsd.load({ base: 'lite_mobilenet_v2' });
+    modelo = modelo || await window.cocoSsd.load({ base: 'mobilenet_v2' });
     detectando = true; F.cfg.deteccion = true; F.save();
     ui.toast('Detección de carros activa');
     ciclo();
@@ -315,6 +315,7 @@ async function iniciarDeteccion() {
   } finally { cargando = false; }
 }
 function detenerDeteccion() { detectando = false; F.objs = []; F.frontDist = null; F.cfg.deteccion = false; F.save(); }
+F.det = { on: () => iniciarDeteccion(), off: detenerDeteccion };
 async function ciclo() {
   if (!detectando) return;
   const v = $('camVid');
@@ -345,4 +346,162 @@ ui.addPanel('deteccion', 'Carros alrededor (cámara)', () => {
   if ($('dOff')) $('dOff').onclick = () => { detenerDeteccion(); ui.render(); };
 });
 if (F.cfg.deteccion && F.app) setTimeout(iniciarDeteccion, 3000);
+})();
+
+/* ================= barra de botones de Forte Tesla ================= */
+(function () {
+'use strict';
+const F = window.F, ui = F.ui, $ = F.$;
+const store = F.store;
+const RAD = Math.PI / 180;
+const dist = (a, b, c, d) => { const R = 6371000, x = (c - a) * RAD, y = (d - b) * RAD, h = Math.sin(x / 2) ** 2 + Math.cos(a * RAD) * Math.cos(c * RAD) * Math.sin(y / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
+const rumbo = (a, b, c, d) => { const y = Math.sin((d - b) * RAD) * Math.cos(c * RAD), x = Math.cos(a * RAD) * Math.sin(c * RAD) - Math.sin(a * RAD) * Math.cos(c * RAD) * Math.cos((d - b) * RAD); return (Math.atan2(y, x) / RAD + 360) % 360; };
+const angDif = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+const gpsReal = () => F.gps && !F.gps.sim ? F.gps : null;
+const fmtD = m => m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`;
+
+/* ---- guardar los últimos segundos (búfer en memoria mientras la cámara está prendida) ---- */
+const B = { rec: null, prev: null, salvar: false, mime: '' };
+function bufferCiclo() {
+  const cam = ui.cam;
+  if (!cam.stream || cam.rec || B.rec) return;
+  B.mime = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp8', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+  const chunks = [];
+  let r;
+  try { r = new MediaRecorder(cam.stream, B.mime ? { mimeType: B.mime, videoBitsPerSecond: 2_000_000 } : { videoBitsPerSecond: 2_000_000 }); } catch (e) { return; }
+  r.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  r.onstop = () => {
+    const type = r.mimeType || 'video/webm', blob = new Blob(chunks, { type });
+    if (B.salvar) {
+      B.salvar = false;
+      const ext = type.includes('mp4') ? 'mp4' : 'webm', st = ui.stamp();
+      if (B.prev) ui.guardar(B.prev, 'evento', `Evento_${st}_a.${ext}`, type.split(';')[0]);
+      ui.guardar(blob, 'evento', `Evento_${st}_b.${ext}`, type.split(';')[0]);
+      B.prev = null;
+      F.alert('evento', 'Video del evento guardado', 'ok', 'Video guardado');
+    } else B.prev = blob;
+    if (B.rec === r) B.rec = null;
+    bufferCiclo();
+  };
+  B.rec = r; r.start(1000);
+  setTimeout(() => { if (r.state === 'recording') r.stop(); }, 20000);
+}
+setInterval(() => {
+  if (ui.cam.stream && !ui.cam.rec) bufferCiclo();
+  if ((!ui.cam.stream || ui.cam.rec) && B.rec && B.rec.state === 'recording') { B.salvar = false; B.rec.stop(); }
+}, 2000);
+function guardarEvento() {
+  const cam = ui.cam;
+  if (!cam.stream) { ui.toast('Prende la cámara (Grabar o Carros) para guardar eventos'); return; }
+  if (cam.rec && cam.rec.state === 'recording') { cam.rec.stop(); F.alert('evento', 'Guardando el video de este momento', 'ok', 'Video guardado'); return; }
+  if (B.rec && B.rec.state === 'recording') { B.salvar = true; B.rec.stop(); return; }
+  ui.toast('Espera un segundo, la cámara está empezando');
+}
+
+/* ---- radares de velocidad (mapa comunitario) ---- */
+let radares = [], radPos = null, radBusy = false;
+const avisoRad = {};
+function cargarRadares() {
+  const g = gpsReal(); if (!g || radBusy) return;
+  if (radPos && dist(radPos[0], radPos[1], g.lat, g.lon) < 1500) return;
+  radBusy = true; radPos = [g.lat, g.lon];
+  fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(`[out:json][timeout:15];node(around:5000,${g.lat},${g.lon})[highway=speed_camera];out 60;`) })
+    .then(r => r.json()).then(j => { radares = (j.elements || []).map(e => ({ id: e.id, lat: e.lat, lon: e.lon, max: parseInt((e.tags || {}).maxspeed) || null })); })
+    .catch(() => {}).finally(() => { radBusy = false; });
+}
+setInterval(() => {
+  if (F.cfg.radares === false) return;
+  const g = gpsReal(); if (!g) return;
+  if (F.S.speed > 5) cargarRadares();
+  if (F.S.speed < 15) return;
+  for (const r of radares) {
+    const d = dist(g.lat, g.lon, r.lat, r.lon);
+    if (d > 450 || d < 20 || (avisoRad[r.id] && Date.now() - avisoRad[r.id] < 180000)) continue;
+    if (g.bearing != null && angDif(rumbo(g.lat, g.lon, r.lat, r.lon), g.bearing) > 40) continue;
+    avisoRad[r.id] = Date.now();
+    F.alert('radar', `Radar de velocidad a ${fmtD(d)}${r.max ? ' · límite ' + r.max : ''}`, 'warn', `Radar a ${Math.round(d / 50) * 50} metros`);
+  }
+}, 2000);
+
+/* ---- mandar ubicación ---- */
+function mandarUbicacion() {
+  const g = gpsReal();
+  if (!g) { ui.toast('Necesito el GPS del teléfono'); return; }
+  const t = `Aquí voy en mi Forte: https://maps.google.com/?q=${g.lat.toFixed(6)},${g.lon.toFixed(6)}`;
+  if (window.OBD && OBD.share) OBD.share(t);
+  else { const a = document.createElement('a'); a.href = 'https://wa.me/?text=' + encodeURIComponent(t); a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+}
+
+/* ---- gasolinera más cercana directo ---- */
+function irGasolinera() {
+  const g = gpsReal();
+  if (!g) { ui.toast('Necesito el GPS del teléfono'); return; }
+  ui.toast('Buscando la gasolinera más cercana…');
+  fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(`[out:json][timeout:15];(node(around:6000,${g.lat},${g.lon})[amenity=fuel];way(around:6000,${g.lat},${g.lon})[amenity=fuel];);out center 30;`) })
+    .then(r => r.json()).then(j => {
+      const L = (j.elements || []).map(e => { const la = e.lat ?? (e.center && e.center.lat), lo = e.lon ?? (e.center && e.center.lon); return { n: (e.tags && (e.tags.brand || e.tags.name)) || 'Gasolinera', la, lo, d: la == null ? 1e9 : dist(g.lat, g.lon, la, lo) }; }).sort((a, b) => a.d - b.d);
+      if (!L[0]) { ui.toast('No encontré gasolineras cerca'); return; }
+      F.alert('gasnav', `${L[0].n} a ${fmtD(L[0].d)}`, 'ok', `Te llevo a ${L[0].n}`);
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${L[0].la},${L[0].lo}&travelmode=driving`;
+      if (window.OBD && OBD.openUrl) OBD.openUrl(url); else window.open(url, '_blank', 'noopener');
+    }).catch(() => ui.toast('No se pudo buscar. Revisa los datos móviles.'));
+}
+
+/* ---- desde el reloj ---- */
+window.forteDash.watchTope = () => { $('btnTope').click(); };
+
+/* ---- la barra ---- */
+const I = {
+  rec: '<circle cx="12" cy="12" r="6"/>',
+  evento: '<path d="M12 3v10M7 9l5 5 5-5M5 20h14"/>',
+  carros: '<path d="M4 16v-4l2-5h12l2 5v4z"/><path d="M4 12h16"/><circle cx="8" cy="16" r="1.6"/><circle cx="16" cy="16" r="1.6"/>',
+  gas: '<path d="M5 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M4 20h11M7 8h5"/><path d="M14 10h2a2 2 0 0 1 2 2v4a1.5 1.5 0 0 0 3 0V9l-3-3"/>',
+  tope: '<path d="M2 18h20M5 18c1.5-5 4-7 7-7s5.5 2 7 7"/>',
+  carro: '<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
+  ubic: '<path d="M4 12l16-8-6 16-2.5-6.5z"/>',
+  radar: '<circle cx="12" cy="13" r="3"/><path d="M6.5 7.5a8 8 0 0 1 11 0M4 5a11.5 11.5 0 0 1 16 0"/>',
+  voz: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  viaje: '<path d="M4 19h16M6 15l4-6 4 3 4-7"/>'
+};
+const BOTONES = [
+  ['rec', 'Grabar', () => { const c = ui.cam; if (c.rec) { ui.recStop(); } else (c.stream ? Promise.resolve() : ui.camStart()).then(() => { if (ui.cam.stream) ui.recStart(); pintar(); }); pintar(); }],
+  ['evento', 'Guardar', guardarEvento],
+  ['carros', 'Carros', () => { if (F.cfg.deteccion) { F.det.off(); ui.toast('Detección de carros apagada'); pintar(); } else { ui.toast('Activando la detección…'); F.det.on().then(pintar); } }],
+  ['gas', 'Gasolina', irGasolinera],
+  ['tope', 'Tope', () => $('btnTope').click()],
+  ['carro', 'Mi carro', () => ui.open('estacionado')],
+  ['ubic', 'Ubicación', mandarUbicacion],
+  ['radar', 'Radares', () => { F.cfg.radares = F.cfg.radares === false; F.save(); ui.toast(F.cfg.radares ? 'Aviso de radares activado' : 'Aviso de radares apagado'); pintar(); }],
+  ['voz', 'Voz', () => $('btnVoz').click()],
+  ['viaje', 'Viaje', () => ui.open('viaje')]
+];
+const dock = document.createElement('nav');
+dock.id = 'dock'; dock.setAttribute('aria-label', 'Accesos rápidos');
+dock.innerHTML = BOTONES.map(([id, l]) => `<button type="button" data-b="${id}"><svg viewBox="0 0 24 24">${I[id]}</svg><span>${l}</span></button>`).join('');
+document.body.appendChild(dock);
+dock.querySelectorAll('button').forEach(b => { const def = BOTONES.find(x => x[0] === b.dataset.b); b.onclick = () => def[2](); });
+function pintar() {
+  const on = { rec: !!ui.cam.rec, carros: !!F.cfg.deteccion, radar: F.cfg.radares !== false };
+  dock.querySelectorAll('button').forEach(b => b.classList.toggle('on', !!on[b.dataset.b]));
+}
+setInterval(pintar, 1000); pintar();
+const css = document.createElement('style');
+css.textContent = `
+#dock{display:none;position:fixed;left:0;right:0;bottom:0;z-index:14;height:calc(58px + env(safe-area-inset-bottom,0px));
+  padding:4px max(10px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(10px,env(safe-area-inset-left,0px));
+  background:rgba(14,18,26,.92);backdrop-filter:blur(8px);border-top:1px solid rgba(255,255,255,.08);justify-content:center;gap:4px}
+body[data-skin="tesla"] #dock{display:flex}
+body[data-skin="tesla"] #stage{bottom:calc(58px + env(safe-area-inset-bottom,0px))}
+body[data-skin="tesla"] #btnTope,body[data-skin="tesla"] #btnVoz{display:none}
+#dock button{flex:1;max-width:96px;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;border-radius:12px;background:transparent;color:#cfd6e2;cursor:pointer;padding:4px 2px}
+#dock svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#dock span{font-size:11px;font-weight:600;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#dock button:active{background:rgba(255,255,255,.08)}
+#dock button.on{color:#fff;background:rgba(47,123,255,.28)}
+#dock button[data-b="rec"].on{background:rgba(229,53,43,.35)}
+#dock button[data-b="rec"] svg circle{fill:currentColor}
+html.hud #dock{display:none!important}`;
+document.head.appendChild(css);
+// al entrar o salir de Forte Tesla cambia el alto disponible
+new MutationObserver(() => window.dispatchEvent(new Event('resize'))).observe(document.body, { attributes: true, attributeFilter: ['data-skin'] });
 })();

@@ -100,18 +100,36 @@ function camino(c, V) {
   c.globalAlpha = 1;
 }
 
+// los otros carros: la misma foto de atrás, aclarada como en los tableros Tesla
+let fantasma = null, fantasmaRojo = null;
+function hacerFantasmas() {
+  const mk = (col, a) => {
+    const o = document.createElement('canvas'); o.width = car.naturalWidth; o.height = car.naturalHeight;
+    const g = o.getContext('2d'); g.drawImage(car, 0, 0);
+    g.fillStyle = '#3a3f47'; g.fillRect(o.width * .404, o.height * .38, o.width * .19, o.height * .12);   // sin placa
+    g.fillStyle = '#3a3f47'; g.fillRect(o.width * .404, o.height * .38, o.width * .19, o.height * .12);   // sin placa
+    g.globalCompositeOperation = 'source-atop'; g.globalAlpha = a; g.fillStyle = col; g.fillRect(0, 0, o.width, o.height);
+    return o;
+  };
+  fantasma = mk('#f2f4f7', .62); fantasmaRojo = mk('#ff2a3b', .55);
+}
 function vehiculos(c) {
-  const L = F.objs || [];
+  const L = (F.objs || []).filter(o => o.cls === 'car' || o.cls === 'truck' || o.cls === 'bus' || o.cls === 'motorcycle');
+  if (carOk && !fantasma) hacerFantasmas();
   for (const o of L.slice().sort((a, b) => b.dist - a.dist)) {
     if (o.dist < 4 || o.dist > 70) continue;
-    const lat = (o.cx - .5) * 1.4 * o.dist, d = o.dist, s = 600 / (d + 5.4);
-    const bx = px(lat, d), by = py(d), w = (o.cls === 'person' ? .5 : o.cls === 'motorcycle' || o.cls === 'bicycle' ? .8 : o.cls === 'car' ? 1.8 : 2.5) * s;
-    const h = (o.cls === 'person' ? 1.7 : o.cls === 'car' ? 1.0 : o.cls === 'motorcycle' ? 1.1 : 1.6) * s * .7;
+    const d = o.dist, s = 600 / (d + 5.4);
+    // carril: el de enfrente o los de los lados, dentro del camino dibujado
+    const lat = clamp((o.cx - .5) * 1.4 * d, -2.6, 2.6);
+    const bx = px(lat, d), by = py(d);
+    const ancho = o.cls === 'car' ? 1.8 : o.cls === 'motorcycle' ? .75 : 2.4;
+    const w = ancho * s * 1.15, h = fantasma ? w * car.naturalHeight / car.naturalWidth * (o.cls === 'truck' || o.cls === 'bus' ? 1.25 : 1) : w * .7;
     const cerca = F.frontDist != null && Math.abs(o.dist - F.frontDist) < .5 && V0.speed > 15 && o.dist / (V0.speed / 3.6) < 1.5;
-    c.save(); c.globalAlpha = clamp(1.4 - d / 70, .3, 1);
-    K.rr(c, bx - w / 2, by - h, w, h, Math.min(10, w * .15));
-    c.fillStyle = cerca ? '#e5352b' : mix(P.road, P.ink, .45); c.fill();
-    if (o.cls !== 'person') { c.fillStyle = '#ff3b3b'; c.fillRect(bx - w * .42, by - h * .55, w * .16, h * .12); c.fillRect(bx + w * .26, by - h * .55, w * .16, h * .12); }
+    c.save(); c.globalAlpha = clamp(1.5 - d / 60, .35, 1);
+    // sombra
+    c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(bx, by, w * .55, w * .07, 0, 0, Math.PI * 2); c.fill();
+    if (fantasma) c.drawImage(cerca ? fantasmaRojo : fantasma, bx - w / 2, by - h, w, h);
+    else { K.rr(c, bx - w / 2, by - h, w, h, 6); c.fillStyle = cerca ? '#e5352b' : '#e8ebf0'; c.fill(); }
     if (d < 40) K.txt(c, `${Math.round(d)} m`, bx, by - h - 12, 14, cerca ? '#e5352b' : P.mute, 'center', 700);
     c.restore();
   }
@@ -119,7 +137,7 @@ function vehiculos(c) {
 let V0 = {};
 
 function auto(c, V) {
-  const W = 370, H = carOk ? W * car.naturalHeight / car.naturalWidth : W * .79;
+  const W = 290, H = carOk ? W * car.naturalHeight / car.naturalWidth : W * .79;
   const p = clamp((F.t - startT) / 1.6, 0, 1), ease = 1 - (1 - p) ** 3;
   const x = 800 - W / 2, y = 615 - H + (1 - ease) * 140;
   // sombra
@@ -128,7 +146,7 @@ function auto(c, V) {
   sg.addColorStop(0, 'rgba(0,0,0,.6)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
   c.fillStyle = sg; c.beginPath(); c.ellipse(800, 606, 200, 26, 0, 0, Math.PI * 2); c.fill(); c.restore();
   quieto = V.speed < 1 ? quieto + (F.dt || .016) : 0;
-  giroMix += ((quieto > 4 && giroOk && p >= 1 ? 1 : 0) - giroMix) * Math.min(1, (F.dt || .016) * 3);
+  giroMix = 0;   // vista 360 desactivada a petición
   if (carOk && giroMix < .99) { c.save(); c.globalAlpha = (.25 + .75 * ease) * (1 - giroMix); c.drawImage(car, x, y, W, H); c.restore(); }
   if (giroMix > .01) {
     const f = Math.floor(F.t / .16) % 24, sx = (f % 6) * 320, sy = Math.floor(f / 6) * 240, GW = 470, GH = GW * .75;
