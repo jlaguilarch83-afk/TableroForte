@@ -71,6 +71,7 @@ pintarConn();
 /* ---------- avisos ---------- */
 let bannerT = null;
 F.on('alert', a => {
+  if (F.cfg.skin === 'tesla') return;   // ese diseño dibuja el aviso arriba del auto
   const b = $('banner'); b.textContent = a.text; b.dataset.k = a.kind; b.hidden = false;
   clearTimeout(bannerT); bannerT = setTimeout(() => { b.hidden = true; }, a.kind === 'crit' ? 7000 : 5000);
 });
@@ -364,7 +365,11 @@ const PANELES = {
   ajustes() {
     const c = F.cfg;
     body.innerHTML = `<label>Precio de la gasolina ($/L)<input id="sPre" type="number" step="0.01" min="0" inputmode="decimal" value="${c.precio}"></label>` + btn('sSave', 'Guardar precio', 'pri') +
-      `<h3>Pantalla</h3><label class="chk"><input id="sHud" type="checkbox"${c.hud ? ' checked' : ''}> Modo HUD (para reflejar en el parabrisas)</label>
+      `<h3>Pantalla</h3>
+       <label>Modo noche<select id="sNoche">${[['auto', 'Automático (sensor de luz o atardecer)'], ['on', 'Siempre de noche'], ['off', 'Siempre de día']].map(([v, l]) => `<option value="${v}"${c.noche === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+       <label>Modo Sport a partir de (km/h)<input id="sSport" type="number" min="30" max="200" step="5" inputmode="numeric" value="${c.sportOn || 75}"></label>
+       <p class="note">En el diseño Forte Tesla: arriba de esa velocidad la pantalla se pone roja con medidores de carreras, y regresa sola al bajar 10 km/h.</p>
+       <label class="chk"><input id="sHud" type="checkbox"${c.hud ? ' checked' : ''}> Modo HUD (voltea la pantalla para reflejarla en el parabrisas)</label>
        <p class="note">Pon el teléfono acostado en el tablero, con la parte de arriba hacia el parabrisas, y baja el brillo de la cabina. Úsalo de noche.</p>
        <label class="chk"><input id="sBien" type="checkbox"${c.bienvenida ? ' checked' : ''}> Animación de bienvenida al abrir</label>` +
       (F.app ? `<label class="chk"><input id="sMus" type="checkbox"${c.musica !== false ? ' checked' : ''}> Botones de música arriba (anterior, reproducir, siguiente)</label>
@@ -374,6 +379,8 @@ const PANELES = {
       '<p class="note">Tablero Forte 2.0 · datos por OBD-II con ELM327.</p>';
     $('sSave').onclick = () => { const v = parseFloat($('sPre').value); if (isFinite(v) && v >= 0) { c.precio = v; F.save(); toast('Precio guardado'); } };
     $('sHud').onchange = e => { c.hud = e.target.checked; F.save(); aplicarHud(); };
+    $('sNoche').onchange = e => { c.noche = e.target.value; F.save(); };
+    $('sSport').onchange = e => { const v = parseInt(e.target.value); if (v >= 30) { c.sportOn = v; F.save(); } };
     $('sBien').onchange = e => { c.bienvenida = e.target.checked; F.save(); };
     if ($('sMus')) $('sMus').onchange = e => { c.musica = e.target.checked; F.save(); $('musicBar').hidden = !c.musica; };
     if ($('sDemo')) $('sDemo').onchange = e => { c.demo = e.target.checked; F.save(); location.reload(); };
@@ -524,6 +531,7 @@ function bienvenida(forzar) {
 function updValet() { $('valetTag').hidden = !F.cfg.valet.on; $('valetTag').textContent = `VALET · ${F.cfg.valet.limite} km/h`; }
 
 /* ---------- arranque ---------- */
+if (!F.cfg.teslaIntro) { F.cfg.teslaIntro = true; F.cfg.skin = 'tesla'; F.save(); }
 ui.setSkin(F.cfg.skin);
 aplicarHud(); updValet();
 F.start();

@@ -12,6 +12,10 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -72,6 +76,37 @@ public class MainActivity extends Activity implements ObdService.Listener {
     private PermissionRequest pendingCam;
     private final Map<Integer, Object[]> files = new HashMap<>();
     private int nextFile = 1;
+
+    // sensor de luz: activa el modo noche y los faros en pantalla
+    private SensorManager sensores;
+    private long lastLux = 0;
+    private final SensorEventListener luz = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent e) {
+            long now = System.currentTimeMillis();
+            if (now - lastLux < 2000) return;
+            lastLux = now;
+            js("window.forteDash&&forteDash.light&&forteDash.light(" + e.values[0] + ")");
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor s, int a) {
+        }
+    };
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        sensores = (SensorManager) getSystemService(SENSOR_SERVICE);
+        Sensor l = sensores != null ? sensores.getDefaultSensor(Sensor.TYPE_LIGHT) : null;
+        if (l != null) sensores.registerListener(luz, l, SensorManager.SENSOR_DELAY_NORMAL);
+    }
+
+    @Override
+    protected void onPause() {
+        if (sensores != null) sensores.unregisterListener(luz);
+        super.onPause();
+    }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override

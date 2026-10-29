@@ -51,6 +51,6 @@ jobs:
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk TableroForte.apk
           cp wear/build/outputs/apk/debug/wear-debug.apk TableroForteReloj.apk
-          gh release create "v2.5.${{ github.run_number }}" TableroForte.apk TableroForteReloj.apk \
-            --title "Tablero Forte v2.5.${{ github.run_number }}" \
+          gh release create "v2.6.${{ github.run_number }}" TableroForte.apk TableroForteReloj.apk \
+            --title "Tablero Forte v2.6.${{ github.run_number }}" \
             --notes "TableroForte.apk va en el teléfono. TableroForteReloj.apk va en el reloj (Galaxy Watch)." --latest

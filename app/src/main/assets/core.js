@@ -23,7 +23,7 @@ F.emit = (ev, a) => { (handlers[ev] || []).forEach(fn => { try { fn(a); } catch 
 
 /* ---------- ajustes ---------- */
 const DEF = {
-  skin: 'pano', precio: 24.5, voz: true, hud: false, bienvenida: true, demo: false, musica: true,
+  skin: 'pano', precio: 24.5, voz: true, hud: false, bienvenida: true, demo: false, musica: true, sportOn: 75, noche: 'auto',
   limite: 0, gasAviso: 15, estacionadoMin: 5,
   valet: { on: false, pin: '', limite: 80 },
   nivel: { pitch: 0, roll: 0 }
@@ -111,6 +111,7 @@ window.forteDash = {
     F.emit('gps', F.gps);
   },
   saved(kind, name) { F.emit('saved', { kind, name }); },
+  light(lux) { F.lux = lux; F.luxT = Date.now(); },
   camError(msg) { F.emit('camerror', msg); }
 };
 
@@ -285,6 +286,22 @@ function funciones(dt) {
   }
   F.idleSeg = idleSeg;
 }
+/* ---------- modo noche: sensor de luz del teléfono, si no, atardecer del clima o la hora ---------- */
+let nocheSensor = false;
+F.isNight = function () {
+  const m = F.cfg.noche || 'auto';
+  if (m === 'on') return true;
+  if (m === 'off') return false;
+  if (F.lux != null && Date.now() - (F.luxT || 0) < 15000) {
+    if (!nocheSensor && F.lux < 15) nocheSensor = true;
+    if (nocheSensor && F.lux > 40) nocheSensor = false;
+    return nocheSensor;
+  }
+  const d = new Date(), hm = d.getHours() * 60 + d.getMinutes(), toMin = s => { const [h, mm] = (s || '').split(':').map(Number); return isFinite(h) ? h * 60 + (mm || 0) : null; };
+  const w = F.weather, sr = w && toMin(w.sunrise), ss = w && toMin(w.sunset);
+  if (sr != null && ss != null) return hm < sr || hm > ss;
+  return d.getHours() >= 19 || d.getHours() < 7;
+};
 F.scoreVal = () => Math.round(F.clamp(100 - F.score.pen, 0, 100));
 
 /* ---------- vista para los diseños ---------- */
