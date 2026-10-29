@@ -13,7 +13,7 @@ let carOk = false;
 car.onload = () => { carOk = true; };
 car.src = 'car_rear.webp';
 // posiciones de las luces dentro de la foto (0..1)
-const LUZ = { izq: [0.10, 0.683], der: [0.905, 0.646], centro: [0.493, 0.48], barra: [[0.18, 0.70], [0.5, 0.69], [0.79, 0.675]] };
+const LUZ = { izq: [0.10, 0.375], der: [0.905, 0.375], centro: [0.5, 0.045], barra: [[0.30, 0.353], [0.5, 0.35], [0.70, 0.353]] };
 
 // colores: día, noche y sport
 const PAL = {
@@ -95,14 +95,14 @@ function camino(c, V) {
 }
 
 function auto(c, V) {
-  const W = 300, H = W * 813 / 720;
+  const W = 370, H = carOk ? W * car.naturalHeight / car.naturalWidth : W * .79;
   const p = clamp((F.t - startT) / 1.6, 0, 1), ease = 1 - (1 - p) ** 3;
   const x = 800 - W / 2, y = 615 - H + (1 - ease) * 140;
   // sombra
   c.save(); c.globalAlpha = .35 * ease + .1;
   const sg = c.createRadialGradient(800, 600, 10, 800, 600, 190);
   sg.addColorStop(0, 'rgba(0,0,0,.6)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
-  c.fillStyle = sg; c.beginPath(); c.ellipse(800, 598, 190, 34, 0, 0, Math.PI * 2); c.fill(); c.restore();
+  c.fillStyle = sg; c.beginPath(); c.ellipse(800, 606, 200, 26, 0, 0, Math.PI * 2); c.fill(); c.restore();
   if (carOk) { c.save(); c.globalAlpha = .25 + .75 * ease; c.drawImage(car, x, y, W, H); c.restore(); }
   else K.carRear(c, 800, 520, 1.6, P.mute, P.card);
   // luces: freno, noche y destello de bienvenida
@@ -117,7 +117,7 @@ function auto(c, V) {
     };
     glow(LUZ.izq[0], LUZ.izq[1], 34 + 30 * k, k);
     glow(LUZ.der[0], LUZ.der[1], 34 + 30 * k, k);
-    if (brake > .05) glow(LUZ.centro[0], LUZ.centro[1], 22 + 18 * brake, brake);
+    if (brake > .05) glow(LUZ.centro[0], LUZ.centro[1], 14 + 10 * brake, brake * .8);
     LUZ.barra.forEach(([u, v]) => glow(u, v, 18 + 14 * k, k * .6));
     c.restore();
   }
