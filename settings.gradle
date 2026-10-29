@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "TableroForte"
-include ':app'
+include ':app', ':wear'

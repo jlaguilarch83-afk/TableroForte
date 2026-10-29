@@ -35,19 +35,22 @@ jobs:
         run: |
           set -o pipefail
           chmod +x gradlew
-          if ! ./gradlew assembleDebug --no-daemon 2>&1 | tee build.log; then
+          if ! ./gradlew :app:assembleDebug :wear:assembleDebug --no-daemon 2>&1 | tee build.log; then
             grep -E "error:|e: |What went wrong|Could not|FAILED|> " build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
             exit 1
           fi
       - uses: actions/upload-artifact@v4
         with:
           name: TableroForte-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            wear/build/outputs/apk/debug/wear-debug.apk
       - name: Publicar descarga
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk TableroForte.apk
-          gh release create "v2.4.${{ github.run_number }}" TableroForte.apk \
-            --title "Tablero Forte v2.4.${{ github.run_number }}" \
-            --notes "Instala TableroForte.apk en tu celular Android." --latest
+          cp wear/build/outputs/apk/debug/wear-debug.apk TableroForteReloj.apk
+          gh release create "v2.5.${{ github.run_number }}" TableroForte.apk TableroForteReloj.apk \
+            --title "Tablero Forte v2.5.${{ github.run_number }}" \
+            --notes "TableroForte.apk va en el teléfono. TableroForteReloj.apk va en el reloj (Galaxy Watch)." --latest

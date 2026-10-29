@@ -18,11 +18,17 @@ import android.os.Build;
 import android.os.IBinder;
 import android.speech.tts.TextToSpeech;
 
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.Node;
+import com.google.android.gms.wearable.PutDataMapRequest;
+import com.google.android.gms.wearable.Wearable;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -117,6 +123,43 @@ public class ObdService extends Service {
         statusText = text;
         statusKind = kind;
         for (Listener l : listeners) l.onStatus(text, kind);
+        ObdService s = instance;
+        if (s != null) s.sendWear(true);
+    }
+
+    // ---------- reloj (Wear OS) ----------
+
+    private long lastWear = 0;
+
+    /** Manda los datos al reloj. Si no hay reloj con la app, no pasa nada. */
+    void sendWear(boolean force) {
+        long now = System.currentTimeMillis();
+        if (!force && now - lastWear < 1500) return;
+        lastWear = now;
+        try {
+            PutDataMapRequest r = PutDataMapRequest.create("/forte/datos");
+            DataMap m = r.getDataMap();
+            synchronized (last) {
+                for (Map.Entry<String, Double> e : last.entrySet()) m.putDouble(e.getKey(), e.getValue());
+            }
+            m.putString("estado", statusText);
+            m.putString("tipo", statusKind);
+            m.putBoolean("conectado", connectedTo != null);
+            m.putLong("t", now);
+            Wearable.getDataClient(this).putDataItem(r.asPutDataRequest().setUrgent());
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void sendWearAlert(final String text) {
+        try {
+            Wearable.getNodeClient(this).getConnectedNodes().addOnSuccessListener(nodes -> {
+                for (Node n : nodes) {
+                    Wearable.getMessageClient(this).sendMessage(n.getId(), "/forte/alerta", text.getBytes(StandardCharsets.UTF_8));
+                }
+            });
+        } catch (Exception ignored) {
+        }
     }
 
     // ---------- ciclo de vida ----------
@@ -437,6 +480,7 @@ public class ObdService extends Service {
         lastAlert.put(id, now);
         alertText = text;
         alertAt = now;
+        sendWearAlert(text);
         if (sp.getBoolean("voz", true)) speak(text);
         return true;
     }
@@ -517,6 +561,7 @@ public class ObdService extends Service {
         }
 
         // notificación con lo más importante
+        sendWear(false);
         updateNotification((speed != null ? Math.round(speed) + " km/h · " : "") + (volt != null ? "batería " + fmt1(volt) + " V" : "conectado"));
     }
 
