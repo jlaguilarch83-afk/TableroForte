@@ -12,6 +12,12 @@ const car = new Image();
 let carOk = false;
 car.onload = () => { carOk = true; };
 car.src = 'car_rear.webp';
+// vista 360° (24 cuadros del video del dron)
+const giro = new Image();
+let giroOk = false;
+giro.onload = () => { giroOk = true; };
+giro.src = 'car_360.webp';
+let quieto = 0, giroMix = 0;
 // posiciones de las luces dentro de la foto (0..1)
 const LUZ = { izq: [0.10, 0.375], der: [0.905, 0.375], centro: [0.5, 0.045], barra: [[0.30, 0.353], [0.5, 0.35], [0.70, 0.353]] };
 
@@ -94,6 +100,24 @@ function camino(c, V) {
   c.globalAlpha = 1;
 }
 
+function vehiculos(c) {
+  const L = F.objs || [];
+  for (const o of L.slice().sort((a, b) => b.dist - a.dist)) {
+    if (o.dist < 4 || o.dist > 70) continue;
+    const lat = (o.cx - .5) * 1.4 * o.dist, d = o.dist, s = 600 / (d + 5.4);
+    const bx = px(lat, d), by = py(d), w = (o.cls === 'person' ? .5 : o.cls === 'motorcycle' || o.cls === 'bicycle' ? .8 : o.cls === 'car' ? 1.8 : 2.5) * s;
+    const h = (o.cls === 'person' ? 1.7 : o.cls === 'car' ? 1.0 : o.cls === 'motorcycle' ? 1.1 : 1.6) * s * .7;
+    const cerca = F.frontDist != null && Math.abs(o.dist - F.frontDist) < .5 && V0.speed > 15 && o.dist / (V0.speed / 3.6) < 1.5;
+    c.save(); c.globalAlpha = clamp(1.4 - d / 70, .3, 1);
+    K.rr(c, bx - w / 2, by - h, w, h, Math.min(10, w * .15));
+    c.fillStyle = cerca ? '#e5352b' : mix(P.road, P.ink, .45); c.fill();
+    if (o.cls !== 'person') { c.fillStyle = '#ff3b3b'; c.fillRect(bx - w * .42, by - h * .55, w * .16, h * .12); c.fillRect(bx + w * .26, by - h * .55, w * .16, h * .12); }
+    if (d < 40) K.txt(c, `${Math.round(d)} m`, bx, by - h - 12, 14, cerca ? '#e5352b' : P.mute, 'center', 700);
+    c.restore();
+  }
+}
+let V0 = {};
+
 function auto(c, V) {
   const W = 370, H = carOk ? W * car.naturalHeight / car.naturalWidth : W * .79;
   const p = clamp((F.t - startT) / 1.6, 0, 1), ease = 1 - (1 - p) ** 3;
@@ -103,12 +127,19 @@ function auto(c, V) {
   const sg = c.createRadialGradient(800, 600, 10, 800, 600, 190);
   sg.addColorStop(0, 'rgba(0,0,0,.6)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
   c.fillStyle = sg; c.beginPath(); c.ellipse(800, 606, 200, 26, 0, 0, Math.PI * 2); c.fill(); c.restore();
-  if (carOk) { c.save(); c.globalAlpha = .25 + .75 * ease; c.drawImage(car, x, y, W, H); c.restore(); }
-  else K.carRear(c, 800, 520, 1.6, P.mute, P.card);
+  quieto = V.speed < 1 ? quieto + (F.dt || .016) : 0;
+  giroMix += ((quieto > 4 && giroOk && p >= 1 ? 1 : 0) - giroMix) * Math.min(1, (F.dt || .016) * 3);
+  if (carOk && giroMix < .99) { c.save(); c.globalAlpha = (.25 + .75 * ease) * (1 - giroMix); c.drawImage(car, x, y, W, H); c.restore(); }
+  if (giroMix > .01) {
+    const f = Math.floor(F.t / .16) % 24, sx = (f % 6) * 320, sy = Math.floor(f / 6) * 240, GW = 470, GH = GW * .75;
+    c.save(); c.globalAlpha = giroMix; c.drawImage(giro, sx, sy, 320, 240, 800 - GW / 2, 618 - GH, GW, GH); c.restore();
+    if (giroMix > .5) K.txt(c, 'Vista 360°', 800, 618 - GH - 10, 16, P.mute, 'center', 700);
+  }
+  if (!carOk && giroMix < .5) K.carRear(c, 800, 520, 1.6, P.mute, P.card);
   // luces: freno, noche y destello de bienvenida
   const flash = p < 1 && Math.floor(p * 6) % 2 === 0 ? 1 : 0;
   const k = Math.max(brake, nightMix * .35, flash * .9);
-  if (k > .02 && carOk) {
+  if (k > .02 && carOk && giroMix < .5) {
     c.save(); c.globalCompositeOperation = 'lighter';
     const glow = (u, v, r, a) => {
       const gx = x + u * W, gy = y + v * H, g = c.createRadialGradient(gx, gy, 0, gx, gy, r);
@@ -152,7 +183,9 @@ const def = {
     c.fillStyle = g; c.fillRect(0, 0, w, h);
   },
   draw(c, V) {
+    V0 = V;
     camino(c, V);
+    vehiculos(c);
     auto(c, V);
 
     // aviso arriba del auto
@@ -182,11 +215,13 @@ const def = {
     }
     K.txt(c, Math.round(V.speed), 300, 245, 150, P.ink, 'center', 500, 'Saira', 'middle', 'semi-condensed');
     K.txt(c, 'km/h', 300, 335, 24, P.mute, 'center', 600);
-    if (V.limite > 0) {
-      const over = V.speed > V.limite;
+    const lim = F.streetLimit ? F.streetLimit.v : V.limite;
+    if (lim > 0) {
+      const over = V.speed > lim;
       c.beginPath(); c.arc(480, 160, 40, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill();
       c.lineWidth = 8; c.strokeStyle = '#e5352b'; c.stroke();
-      K.txt(c, String(V.limite), 480, 162, 30, over ? '#e5352b' : '#111', 'center', 800);
+      K.txt(c, String(lim), 480, 162, 30, over ? '#e5352b' : '#111', 'center', 800);
+      if (F.streetLimit) K.txt(c, 'calle', 480, 216, 14, P.mute, 'center', 700);
     }
     // potencia / freno
     const pw = clamp(V.load / 100, 0, 1), rg = clamp(brake, 0, 1);

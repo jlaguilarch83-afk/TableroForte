@@ -146,6 +146,9 @@ public class ObdService extends Service {
             m.putString("tipo", statusKind);
             m.putBoolean("conectado", connectedTo != null);
             m.putLong("t", now);
+            m.putDouble("trip", tripKm);
+            m.putDouble("oil_km", sp.getFloat("oil_km", 0));
+            m.putDouble("oil_int", sp.getInt("oil_int", 5000));
             Wearable.getDataClient(this).putDataItem(r.asPutDataRequest().setUrgent());
         } catch (Exception ignored) {
         }
@@ -354,6 +357,7 @@ public class ObdService extends Service {
     // ---------- lectura en ciclo ----------
 
     private double tripKmSinceSave = 0;
+    static double tripKm = 0;
     private long lastLoop = 0;
     private Double prevRpm = null;
     private double crankMin = 99;
@@ -362,7 +366,8 @@ public class ObdService extends Service {
 
     private void poll(InputStream in, OutputStream out) throws Exception {
         String[] fast = {"0C", "0D", "04", "11"};
-        String[] slow = {"FUEL", "05", "0F", "2F", "46"};
+        // lentos, por turnos; los que el auto no reporta se saltan solos después de 3 intentos
+        String[] slow = {"FUEL", "05", "0F", "2F", "46", "0E", "1F", "33", "06", "07", "5C", "0A", "42"};
         Map<String, Integer> fails = new HashMap<>();
         boolean mafOk = true;
         Double rpm = null, iat = null;
@@ -408,6 +413,14 @@ public class ObdService extends Service {
                     case "2F": o.put("fuel", a * 100.0 / 255); break;
                     case "46": o.put("ambient", a - 40); break;
                     case "10": o.put("maf", (a * 256 + b) / 100.0); break;
+                    case "0E": o.put("timing", a / 2.0 - 64); break;                 // avance de encendido °
+                    case "1F": o.put("runtime", a * 256 + b); break;                 // segundos desde que arrancó
+                    case "33": o.put("baro", a); break;                              // presión atmosférica kPa
+                    case "06": o.put("stft", (a - 128) * 100.0 / 128); break;        // ajuste de combustible corto %
+                    case "07": o.put("ltft", (a - 128) * 100.0 / 128); break;        // ajuste de combustible largo %
+                    case "5C": o.put("oil", a - 40); break;                          // temperatura del aceite °C
+                    case "0A": o.put("fuelpress", a * 3); break;                     // presión de combustible kPa
+                    case "42": o.put("ecuvolt", (a * 256 + b) / 1000.0); break;      // voltaje en la computadora
                     case "0B": {
                         // Sin sensor MAF: aire calculado con la presión del múltiple. Motor 2.0 L, eficiencia ~85 %.
                         double r = rpm == null ? 750 : rpm;
@@ -494,6 +507,7 @@ public class ObdService extends Service {
         // kilómetros para el aceite
         if (speed != null) {
             tripKmSinceSave += speed * dt / 3600.0;
+            tripKm += speed * dt / 3600.0;
             if (tripKmSinceSave > 0.5) {
                 float km = sp.getFloat("oil_km", 0) + (float) tripKmSinceSave;
                 sp.edit().putFloat("oil_km", km).apply();

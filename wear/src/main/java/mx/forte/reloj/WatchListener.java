@@ -27,9 +27,10 @@ public class WatchListener extends WearableListenerService {
     public void onDataChanged(DataEventBuffer events) {
         WatchData.load(this);
         for (DataEvent e : events) {
-            if (e.getType() == DataEvent.TYPE_CHANGED && "/forte/datos".equals(e.getDataItem().getUri().getPath())) {
-                WatchData.update(this, DataMapItem.fromDataItem(e.getDataItem()).getDataMap());
-            }
+            if (e.getType() != DataEvent.TYPE_CHANGED) continue;
+            String path = e.getDataItem().getUri().getPath();
+            if ("/forte/datos".equals(path)) WatchData.update(this, DataMapItem.fromDataItem(e.getDataItem()).getDataMap());
+            else if ("/forte/estacionado".equals(path)) WatchData.setParked(this, DataMapItem.fromDataItem(e.getDataItem()).getDataMap());
         }
         long now = System.currentTimeMillis();
         if (now - lastTile > 10000) {

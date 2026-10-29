@@ -115,8 +115,11 @@ const kv = (l, v) => `<div class="kv"><span>${l}</span><b>${v}</b></div>`;
 /* ---------- paneles ---------- */
 const PANELES = {
   disenos() {
-    body.innerHTML = '<p class="note">Toca un diseño para usarlo. Los datos del auto son los mismos en todos.</p><div class="skins">' +
-      F.SKINS.map(s => `<button type="button" class="skin${s.id === F.cfg.skin ? ' on' : ''}" data-id="${s.id}"><canvas width="320" height="124"></canvas><span>${s.name}</span></button>`).join('') + '</div>';
+    const grupos = [];
+    F.SKINS.forEach(s => { const g = s.group || 'Originales'; let G = grupos.find(x => x[0] === g); if (!G) grupos.push(G = [g, []]); G[1].push(s); });
+    body.innerHTML = `<p class="note">${F.SKINS.length} diseños. Toca uno para usarlo; los datos del auto son los mismos en todos.</p>` +
+      grupos.map(([g, L]) => `<h3>${g}</h3><div class="skins">` +
+        L.map(s => `<button type="button" class="skin${s.id === F.cfg.skin ? ' on' : ''}" data-id="${s.id}"><canvas width="320" height="124"></canvas><span>${s.name}</span></button>`).join('') + '</div>').join('');
     const V = Object.assign({}, F.V, { speed: 88, rpm: 3200, throttle: 35, load: 42, coolant: 90, fuel: 64, volt: 14.2, kml: 17.4, avg: 15.8, tripKm: 23.6, gLong: .12, gLat: .18, heading: 42, pitch: 4, roll: -3, alt: 1440, score: 92 });
     body.querySelectorAll('.skin').forEach(b => {
       const def = F.SKINS.find(s => s.id === b.dataset.id), c = b.querySelector('canvas').getContext('2d');
@@ -389,6 +392,12 @@ const PANELES = {
   }
 };
 
+/* para que otros archivos agreguen secciones al menú */
+ui.addPanel = (id, label, fn) => { SECCIONES.push([id, label]); PANELES[id] = fn; };
+ui.h = { btn, kv, esc, n, body };
+ui.section = () => seccion;
+ui.render = () => render();
+
 F.on('codes', list => { if (seccion === 'fallas') render(); if (list && list.length) F.alert('dtc', `Check engine: ${list.join(', ')}`, 'warn'); });
 F.on('cleared', ok => { toast(ok ? 'Códigos borrados' : 'El auto no aceptó el borrado'); if (ok) F.readCodes(); });
 F.on('weather', () => { if (seccion === 'clima') render(); });
@@ -455,6 +464,7 @@ function camFoto() {
   const fl = $('flash'); fl.hidden = false; setTimeout(() => { fl.hidden = true; }, 150);
 }
 $('btnShot').onclick = camFoto;
+ui.camStart = camStart; ui.camFoto = camFoto; ui.recStart = recStart; ui.recStop = recStop; ui.cam = cam;
 function recStart() {
   if (!cam.stream || cam.rec) return;
   cam.mime = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp8', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';

@@ -64,7 +64,7 @@ import java.util.Set;
 public class MainActivity extends Activity implements ObdService.Listener {
 
     private static final String HOST = "forte.app";
-    private static final int REQ_BT = 7, REQ_LOC = 8, REQ_CAM = 9;
+    private static final int REQ_BT = 7, REQ_LOC = 8, REQ_CAM = 9, REQ_VOZ = 10, REQ_MIC = 11;
 
     private WebView web;
     private BluetoothAdapter adapter;
@@ -197,6 +197,18 @@ public class MainActivity extends Activity implements ObdService.Listener {
 
     private boolean has(String perm) {
         return checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != REQ_VOZ) return;
+        String txt = "";
+        if (res == RESULT_OK && data != null) {
+            java.util.ArrayList<String> r = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+            if (r != null && !r.isEmpty()) txt = r.get(0);
+        }
+        js("window.forteDash&&forteDash.heard&&forteDash.heard(" + JSONObject.quote(txt) + ")");
     }
 
     @Override
@@ -523,6 +535,46 @@ public class MainActivity extends Activity implements ObdService.Listener {
                     startActivity(Intent.createChooser(i, "Compartir viaje"));
                 }
             });
+        }
+
+        /** Escucha un comando de voz con el reconocedor de Google. */
+        @JavascriptInterface
+        public void listen() {
+            runOnUiThread(() -> {
+                Intent i = new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "es-MX");
+                i.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "¿Qué necesitas?");
+                try {
+                    startActivityForResult(i, REQ_VOZ);
+                } catch (Exception e) {
+                    js("window.forteDash&&forteDash.heard&&forteDash.heard('')");
+                }
+            });
+        }
+
+        /** Abre un enlace (mapas, navegación) en la app que corresponda. */
+        @JavascriptInterface
+        public void openUrl(final String url) {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (Exception ignored) {
+                }
+            });
+        }
+
+        /** Manda al reloj dónde quedó estacionado el auto. */
+        @JavascriptInterface
+        public void parked(double lat, double lon) {
+            try {
+                com.google.android.gms.wearable.PutDataMapRequest r = com.google.android.gms.wearable.PutDataMapRequest.create("/forte/estacionado");
+                r.getDataMap().putDouble("lat", lat);
+                r.getDataMap().putDouble("lon", lon);
+                r.getDataMap().putLong("t", System.currentTimeMillis());
+                com.google.android.gms.wearable.Wearable.getDataClient(MainActivity.this).putDataItem(r.asPutDataRequest().setUrgent());
+            } catch (Exception ignored) {
+            }
         }
 
         @JavascriptInterface
