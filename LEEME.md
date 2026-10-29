@@ -46,6 +46,21 @@ Para que aparezca:
 
 Las alertas con voz se oyen por las bocinas del auto aunque la pantalla del teléfono esté apagada.
 
+## Reloj (Galaxy Watch 7 / Wear OS) · versión 2.5
+`TableroForteReloj.apk` va en el reloj. Muestra velocidad, RPM, batería, motor y gasolina en vivo,
+tiene un mosaico (desliza desde la carátula) y vibra con las alertas. Los datos llegan del teléfono,
+así que la app del teléfono debe estar conectada al OBD.
+
+Instalarlo (una sola vez, sin computadora):
+1. Reloj: Ajustes › Acerca del reloj › Información de software › toca **Versión de software** unas 7 veces.
+2. Reloj: Ajustes › **Opciones de desarrollador** › activa **Depuración ADB** y **Depuración inalámbrica**.
+   Reloj y teléfono en la misma red Wi-Fi.
+3. Teléfono: instala **Wear Installer 2** (Play Store) y descarga `TableroForteReloj.apk`.
+4. En Depuración inalámbrica del reloj toca **Vincular nuevo dispositivo**: da un código y un puerto.
+   En Wear Installer 2 escribe la IP del reloj, el código y el puerto de vinculación.
+5. Luego conecta con la IP y el puerto que salen en Depuración inalámbrica (es otro puerto) e instala el APK.
+6. Al terminar, apaga Depuración ADB en el reloj para ahorrar batería.
+
 ## Datos que lee
 RPM, velocidad, carga del motor, acelerador, temperatura del refrigerante,
 aire de admisión, voltaje, nivel de gasolina y temperatura exterior (si el auto los reporta),
