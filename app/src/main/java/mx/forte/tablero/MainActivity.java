@@ -493,6 +493,7 @@ public class MainActivity extends Activity implements ObdService.Listener {
                 JSONObject o = new JSONObject(json);
                 ObdService.prefs(MainActivity.this).edit()
                         .putInt("limite", o.optInt("limite", 0))
+                        .putInt("limite_txt", o.optInt("limiteTxt", o.optInt("limite", 0)))
                         .putInt("gas_aviso", o.optInt("gasAviso", 15))
                         .putInt("estacionado_min", o.optInt("estacionadoMin", 5))
                         .putBoolean("voz", o.optBoolean("voz", true))

@@ -516,10 +516,10 @@ public class ObdService extends Service {
         }
 
         // velocidad
-        int limite = sp.getInt("limite", 0);
-        if (limite > 0 && speed != null && speed > limite + 1) {
+        int limite = sp.getInt("limite", 0), limiteTxt = sp.getInt("limite_txt", limite);
+        if (limite > 0 && speed != null && speed > limite) {
             overSince += dt;
-            if (overSince > 1) alert("vel", "Exceso de velocidad. Vas a " + Math.round(speed) + ". Límite " + limite, 15);
+            if (overSince > 1) alert("vel", "Vas a " + Math.round(speed) + ", el límite es " + limiteTxt, 15);
         } else overSince = 0;
 
         // gasolina

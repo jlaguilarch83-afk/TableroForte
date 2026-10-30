@@ -117,8 +117,8 @@ function vehiculos(c) {
   const L = (F.objs || []).filter(o => o.cls === 'car' || o.cls === 'truck' || o.cls === 'bus' || o.cls === 'motorcycle');
   if (carOk && !fantasma) hacerFantasmas();
   for (const o of L.slice().sort((a, b) => b.dist - a.dist)) {
-    if (o.dist < 4 || o.dist > 70) continue;
-    const d = o.dist, s = 600 / (d + 5.4);
+    if (o.dist > 80) continue;
+    const d = Math.max(o.dist, 6), s = 600 / (d + 5.4);   // los muy cercanos se dibujan justo adelante del tuyo
     // carril: el de enfrente o los de los lados, dentro del camino dibujado
     const lat = clamp((o.cx - .5) * 1.4 * d, -2.6, 2.6);
     const bx = px(lat, d), by = py(d);
@@ -130,9 +130,26 @@ function vehiculos(c) {
     c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(bx, by, w * .55, w * .07, 0, 0, Math.PI * 2); c.fill();
     if (fantasma) c.drawImage(cerca ? fantasmaRojo : fantasma, bx - w / 2, by - h, w, h);
     else { K.rr(c, bx - w / 2, by - h, w, h, 6); c.fillStyle = cerca ? '#e5352b' : '#e8ebf0'; c.fill(); }
-    if (d < 40) K.txt(c, `${Math.round(d)} m`, bx, by - h - 12, 14, cerca ? '#e5352b' : P.mute, 'center', 700);
+    if (d < 40) K.txt(c, `${Math.round(o.dist)} m`, bx, by - h - 12, 14, cerca ? '#e5352b' : P.mute, 'center', 700);
     c.restore();
   }
+}
+// letrero de tope o bache adelante, a la orilla del camino
+function peligro(c) {
+  const p = F.peligro;
+  if (!p || p.d > 160) return;
+  const d = Math.max(8, p.d), s = 600 / (d + 5.4), x = px(ORILLA + .9, d), y = py(d), r = clamp(s * .9, 12, 46);
+  c.save();
+  c.strokeStyle = '#555'; c.lineWidth = Math.max(2, r * .12); c.beginPath(); c.moveTo(x, y); c.lineTo(x, y - r * 1.6); c.stroke();
+  const cy = y - r * 1.6 - r;
+  c.beginPath(); c.moveTo(x, cy - r); c.lineTo(x + r, cy); c.lineTo(x, cy + r); c.lineTo(x - r, cy); c.closePath();
+  c.fillStyle = '#ffc61a'; c.fill(); c.lineWidth = Math.max(1.5, r * .08); c.strokeStyle = '#1a1a1a'; c.stroke();
+  c.strokeStyle = '#1a1a1a'; c.lineWidth = Math.max(1.5, r * .11); c.beginPath();
+  if (p.tipo === 'bache') { c.moveTo(x - r * .55, cy + r * .1); c.lineTo(x - r * .25, cy + r * .1); c.lineTo(x - r * .1, cy + r * .35); c.lineTo(x + r * .1, cy + r * .35); c.lineTo(x + r * .25, cy + r * .1); c.lineTo(x + r * .55, cy + r * .1); }
+  else { c.moveTo(x - r * .55, cy + r * .25); c.quadraticCurveTo(x, cy - r * .45, x + r * .55, cy + r * .25); }
+  c.stroke();
+  K.txt(c, `${p.tipo === 'bache' ? 'Bache' : 'Tope'} ${Math.round(p.d)} m`, x, y + 14, clamp(r * .5, 12, 18), P.ink, 'center', 700);
+  c.restore();
 }
 let V0 = {};
 
@@ -204,6 +221,7 @@ const def = {
     V0 = V;
     camino(c, V);
     vehiculos(c);
+    peligro(c);
     auto(c, V);
 
     // aviso arriba del auto
@@ -211,9 +229,10 @@ const def = {
       const a = clamp(Math.min(F.t - alerta.t, 6 - (F.t - alerta.t)) * 3, 0, 1);
       c.save(); c.globalAlpha = a; c.font = K.font(24, 700);
       const tw = Math.min(560, c.measureText(alerta.text).width + 60);
-      K.rr(c, 800 - tw / 2, 168, tw, 52, 26);
+      const ay = F.nav && F.nav.activo() ? 238 : 168;
+      K.rr(c, 800 - tw / 2, ay, tw, 52, 26);
       c.fillStyle = alerta.kind === 'crit' ? '#e5352b' : alerta.kind === 'ok' ? '#1f9d55' : '#e89a10'; c.fill();
-      K.txt(c, alerta.text.length > 38 ? alerta.text.slice(0, 37) + '…' : alerta.text, 800, 195, 24, '#fff', 'center', 700);
+      K.txt(c, alerta.text.length > 38 ? alerta.text.slice(0, 37) + '…' : alerta.text, 800, ay + 27, 24, '#fff', 'center', 700);
       c.restore();
     }
 
@@ -236,10 +255,10 @@ const def = {
     const lim = F.streetLimit ? F.streetLimit.v : V.limite;
     if (lim > 0) {
       const over = V.speed > lim;
-      c.beginPath(); c.arc(480, 160, 40, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill();
+      c.beginPath(); c.arc(485, 255, 40, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill();
       c.lineWidth = 8; c.strokeStyle = '#e5352b'; c.stroke();
-      K.txt(c, String(lim), 480, 162, 30, over ? '#e5352b' : '#111', 'center', 800);
-      if (F.streetLimit) K.txt(c, 'calle', 480, 216, 14, P.mute, 'center', 700);
+      K.txt(c, String(lim), 485, 257, 30, over ? '#e5352b' : '#111', 'center', 800);
+      if (F.streetLimit) K.txt(c, F.streetLimit.est ? 'estimado' : 'calle', 485, 311, 14, P.mute, 'center', 700);
     }
     // potencia / freno
     const pw = clamp(V.load / 100, 0, 1), rg = clamp(brake, 0, 1);
@@ -252,7 +271,13 @@ const def = {
     K.txt(c, `Autonomía ${n(V.range)} km`, 100, 488, 24, P.ink, 'left', 700);
     K.rr(c, 100, 510, 400, 34, 17); c.fillStyle = mix(P.bg1, P.ink, .1); c.fill();
     if (V.fuel != null) { K.rr(c, 100, 510, Math.max(34, 400 * V.fuel / 100), 34, 17); c.fillStyle = V.fuel < 15 ? '#e5352b' : '#20b26b'; c.fill(); }
-    K.txt(c, `${n(V.fuel)} %`, 118, 528, 18, '#fff', 'left', 700);
+    if (V.fuel != null && V.fuel < 22) K.txt(c, `${n(V.fuel)} %`, 100 + Math.max(34, 400 * V.fuel / 100) + 10, 528, 18, '#e5352b', 'left', 800);
+    else K.txt(c, `${n(V.fuel)} %`, 118, 528, 18, '#fff', 'left', 700);
+    const ds = F.detStatus;
+    if (F.cfg.deteccion && ds) {
+      const ok = ds.estado === 'activa';
+      K.txt(c, ok ? `Cámara: ${ds.n} ${ds.n === 1 ? 'carro' : 'carros'}` : `Cámara: ${ds.estado}`, 100, 580, 17, ok ? P.mute : '#e89a10', 'left', 700);
+    }
 
     // ---- arriba al centro: hora y clima ----
     K.txt(c, V.clock, 800, 70, 26, P.ink, 'center', 600);

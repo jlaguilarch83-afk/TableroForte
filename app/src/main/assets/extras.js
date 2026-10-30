@@ -45,29 +45,74 @@ function boton(id, ico, label, fn) {
   barra.insertBefore(b, $('btnMenu'));
   return b;
 }
-boton('btnTope', ICO.tope, 'Marcar tope aquí', () => marcarTope());
+boton('btnTope', ICO.tope, 'Marcar tope aquí', () => marcarTope('tope'));
 boton('btnVoz', ICO.mic, 'Comando de voz', () => escuchar());
 
-/* ================= límite de velocidad de la calle ================= */
-F.streetLimit = null;
-let limPos = null, limT = 0, limBusy = false, overCalle = 0;
-function revisarLimite() {
-  const g = gpsReal(); if (!g || limBusy) return;
-  if (limPos && dist(limPos[0], limPos[1], g.lat, g.lon) < 120 && Date.now() - limT < 90000) return;
-  limBusy = true; limPos = [g.lat, g.lon]; limT = Date.now();
-  overpass(`[out:json][timeout:10];way(around:30,${g.lat},${g.lon})[highway][maxspeed];out tags 3;`)
-    .then(j => {
-      const w = (j.elements || [])[0], v = w && parseInt(w.tags.maxspeed);
-      F.streetLimit = v > 0 ? { v, name: w.tags.name || '' } : null;
-    }).catch(() => {}).finally(() => { limBusy = false; });
+/* ================= límite automático según la calle (GPS + mapa) ================= */
+// Se baja la red de calles alrededor (300 m) y se busca, con el GPS, la calle en la que vas.
+// Si la calle no tiene límite en el mapa, se estima por el tipo de vía.
+const LIM_TIPO = { motorway: 110, motorway_link: 60, trunk: 80, trunk_link: 50, primary: 60, primary_link: 40, secondary: 50, secondary_link: 40,
+  tertiary: 50, tertiary_link: 40, unclassified: 40, residential: 40, living_street: 20, service: 20 };
+let red = [], redPos = null, redBusy = false, overLim = 0;
+F.streetLimit = null; F.limiteActivo = null;
+function bajarRed(g) {
+  if (redBusy) return;
+  redBusy = true; redPos = [g.lat, g.lon];
+  overpass(`[out:json][timeout:15];way(around:350,${g.lat},${g.lon})[highway~"^(${Object.keys(LIM_TIPO).join('|')})$"];out tags geom;`)
+    .then(j => { red = (j.elements || []).filter(w => w.geometry && w.geometry.length > 1); })
+    .catch(() => {}).finally(() => { redBusy = false; });
 }
-setInterval(() => { if (F.S.speed > 5) revisarLimite(); }, 5000);
-F.on('frame', dt => {
-  const L = F.streetLimit;
-  if (L && F.S.speed > L.v + 5) {
-    overCalle += dt;
-    if (overCalle > 2 && cada('calle', 30)) F.alert('calle', `Límite de esta calle: ${L.v} km/h`, 'crit', `Cuidado, el límite aquí es ${L.v}`);
-  } else overCalle = 0;
+function segDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+  const t = l ? clamp(((px - ax) * dx + (py - ay) * dy) / l, 0, 1) : 0;
+  return { d: Math.hypot(px - ax - t * dx, py - ay - t * dy), b: (Math.atan2(dx, dy) / RAD + 360) % 360 };
+}
+function calleActual(g) {
+  const k = Math.cos(g.lat * RAD) * 111320, m = 111320;   // metros por grado
+  let best = null, bestScore = 1e9;
+  for (const w of red) {
+    const G = w.geometry;
+    for (let i = 1; i < G.length; i++) {
+      const r = segDist(g.lon * k, g.lat * m, G[i - 1].lon * k, G[i - 1].lat * m, G[i].lon * k, G[i].lat * m);
+      if (r.d > 35) continue;
+      let pen = 0;
+      if (g.bearing != null && g.speed > 8) { const a = angDif(r.b, g.bearing); pen = Math.min(a, 180 - a) > 35 ? 25 : 0; }
+      const sc = r.d + pen;
+      if (sc < bestScore) { bestScore = sc; best = w; }
+    }
+  }
+  return best;
+}
+function limiteDe(w) {
+  const t = w.tags || {}, ms = parseInt(t.maxspeed);
+  if (ms > 0) return { v: ms, est: false };
+  const v = LIM_TIPO[t.highway];
+  return v ? { v, est: true } : null;
+}
+setInterval(() => {
+  const g = gpsReal();
+  if (!g || F.cfg.limiteAuto === false) { if (F.streetLimit) { F.streetLimit = null; actualizarLimite(); } return; }
+  if (!redPos || dist(redPos[0], redPos[1], g.lat, g.lon) > 220) bajarRed(g);
+  const w = calleActual(g);
+  const L = w ? limiteDe(w) : null;
+  const nuevo = L ? { v: L.v, est: L.est, name: (w.tags && w.tags.name) || '' } : null;
+  const cambio = (nuevo && nuevo.v) !== (F.streetLimit && F.streetLimit.v);
+  F.streetLimit = nuevo;
+  if (cambio) actualizarLimite();
+}, 2000);
+function actualizarLimite() {
+  const tol = F.cfg.tolerancia ?? 5;
+  F.limiteActivo = F.streetLimit ? F.streetLimit.v + tol : null;
+  if (F.syncServicio) F.syncServicio();
+}
+ui.addPanel('limites', 'Límite por calle', () => {
+  const L = F.streetLimit, c = F.cfg;
+  body.innerHTML = `<p class="note">Con el GPS detecto la calle en la que vas y su límite. Si el mapa no lo tiene, lo estimo por el tipo de calle (avenida 60, calle 40…). Te aviso con voz cuando pasas el límite más la tolerancia.</p>` +
+    kv('Calle', L ? esc(L.name || 'sin nombre') : '—') + kv('Límite', L ? `${L.v} km/h${L.est ? ' (estimado)' : ''}` : '—') + kv('Te aviso arriba de', L ? `${L.v + (c.tolerancia ?? 5)} km/h` : '—') +
+    `<label class="chk"><input id="lAuto" type="checkbox"${c.limiteAuto !== false ? ' checked' : ''}> Límite automático por calle</label>
+     <label>Tolerancia (km/h arriba del límite)<input id="lTol" type="number" min="0" max="20" step="1" inputmode="numeric" value="${c.tolerancia ?? 5}"></label>` +
+    btn('lSave', 'Guardar', 'pri') + '<p class="note">Los límites salen de OpenStreetMap; si ves uno mal, el estimado manda hasta que alguien lo corrija en el mapa.</p>';
+  $('lSave').onclick = () => { c.limiteAuto = $('lAuto').checked; c.tolerancia = clamp(parseInt($('lTol').value) || 0, 0, 20); F.save(); actualizarLimite(); ui.toast('Guardado'); };
 });
 
 /* ================= viaje: datos extra, resumen al terminar y estacionado ================= */
@@ -161,33 +206,56 @@ ui.addPanel('gasolineras', 'Gasolineras cercanas', () => {
 });
 
 /* ================= topes y baches ================= */
-const topes = store('forte-topes') || [];
+const topes = store('forte-topes') || [];            // los que marcas tú: {tipo:'tope'|'bache'}
+let topesMapa = [], tmPos = null, tmBusy = false;    // topes que vienen en el mapa
 const avisados = {};
-function marcarTope() {
+F.peligro = null;                                    // el más cercano adelante, para dibujarlo en el camino
+function marcarTope(tipo) {
+  tipo = tipo === 'bache' ? 'bache' : 'tope';
   const g = gpsReal();
-  if (!g) { ui.toast('Necesito el GPS para marcar el tope'); return; }
-  topes.push({ lat: g.lat, lon: g.lon, rumbo: g.bearing ?? null, t: Date.now() });
+  if (!g) { ui.toast(`Necesito el GPS para marcar el ${tipo}`); return; }
+  topes.push({ tipo, lat: g.lat, lon: g.lon, rumbo: g.bearing ?? null, t: Date.now() });
   store('forte-topes', topes);
-  ui.toast('Tope guardado'); F.speak('Tope guardado');
+  const t = tipo === 'bache' ? 'Bache guardado' : 'Tope guardado';
+  ui.toast(t); F.speak(t);
+}
+F.marcarTope = marcarTope;
+function bajarTopesMapa(g) {
+  if (tmBusy) return; tmBusy = true; tmPos = [g.lat, g.lon];
+  overpass(`[out:json][timeout:15];node(around:2000,${g.lat},${g.lon})[traffic_calming~"^(bump|hump|table|cushion|yes|rumble_strip)$"];out 200;`)
+    .then(j => { topesMapa = (j.elements || []).map(e => ({ tipo: 'tope', lat: e.lat, lon: e.lon, id: 'm' + e.id })); })
+    .catch(() => {}).finally(() => { tmBusy = false; });
 }
 setInterval(() => {
-  const g = gpsReal(); if (!g || F.S.speed < 12) return;
-  topes.forEach((tp, i) => {
+  const g = gpsReal(); F.peligro = null;
+  if (!g || F.S.speed < 8) return;
+  if (!tmPos || dist(tmPos[0], tmPos[1], g.lat, g.lon) > 1200) bajarTopesMapa(g);
+  const todos = topes.map((t, i) => Object.assign({ id: 'u' + i }, t)).concat(topesMapa);
+  let cerca = null;
+  for (const tp of todos) {
     const d = dist(g.lat, g.lon, tp.lat, tp.lon);
-    if (d > 160 || d < 15 || (avisados[i] && Date.now() - avisados[i] < 120000)) return;
-    if (g.bearing != null && angDif(rumbo(g.lat, g.lon, tp.lat, tp.lon), g.bearing) > 45) return;
-    avisados[i] = Date.now();
-    F.alert('tope', `Tope adelante, a ${fmtD(d)}`, 'warn', 'Tope adelante');
-  });
-}, 1500);
+    if (d > 180 || d < 8) continue;
+    if (g.bearing != null && angDif(rumbo(g.lat, g.lon, tp.lat, tp.lon), g.bearing) > 40) continue;
+    if (!cerca || d < cerca.d) cerca = { tipo: tp.tipo || 'tope', d };
+    if (d < 160 && !(avisados[tp.id] && Date.now() - avisados[tp.id] < 120000)) {
+      avisados[tp.id] = Date.now();
+      const T = (tp.tipo || 'tope') === 'bache' ? 'Bache' : 'Tope';
+      F.alert('tope', `${T} adelante, a ${fmtD(d)}`, 'warn', `${T} adelante`);
+    }
+  }
+  F.peligro = cerca;
+}, 1000);
 ui.addPanel('topes', 'Topes y baches', () => {
-  body.innerHTML = '<p class="note">Toca el botón de tope (arriba, junto al menú) o di "tope" cuando pases uno. La próxima vez que vayas hacia él, te aviso con voz 150 m antes.</p>' +
-    btn('tMarcar', 'Marcar tope aquí', 'pri') +
-    (topes.length ? `<h3>${topes.length} guardados</h3><ul class="list">` + topes.slice().reverse().slice(0, 30).map((t, k) => {
+  const nT = topes.filter(t => t.tipo !== 'bache').length, nB = topes.length - nT;
+  body.innerHTML = '<p class="note">Marca un tope o un bache cuando pases por él (botones de abajo en Forte Tesla, di "tope" o "bache", o mantén presionado el reloj para un tope). La próxima vez te aviso 160 m antes y lo ves dibujado en el camino. También aviso los topes que ya vienen en el mapa.</p>' +
+    `<div class="row">${btn('tMarcar', 'Marcar tope', 'pri')}${btn('bMarcar', 'Marcar bache', 'pri')}</div>` +
+    kv('Topes tuyos', String(nT)) + kv('Baches tuyos', String(nB)) + kv('Topes del mapa cerca', String(topesMapa.length)) +
+    (topes.length ? '<h3>Guardados</h3><ul class="list">' + topes.slice().reverse().slice(0, 40).map((t, k) => {
       const i = topes.length - 1 - k, g = gpsReal();
-      return `<li><span>${new Date(t.t).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}${g ? ' · a ' + fmtD(dist(g.lat, g.lon, t.lat, t.lon)) : ''}</span><button type="button" class="mini" data-del="${i}">Quitar</button></li>`;
-    }).join('') + '</ul>' : '<p class="note">Todavía no hay topes guardados.</p>');
-  $('tMarcar').onclick = () => { marcarTope(); ui.render(); };
+      return `<li><span>${t.tipo === 'bache' ? 'Bache' : 'Tope'} · ${new Date(t.t).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}${g ? ' · a ' + fmtD(dist(g.lat, g.lon, t.lat, t.lon)) : ''}</span><button type="button" class="mini" data-del="${i}">Quitar</button></li>`;
+    }).join('') + '</ul>' : '');
+  $('tMarcar').onclick = () => { marcarTope('tope'); ui.render(); };
+  $('bMarcar').onclick = () => { marcarTope('bache'); ui.render(); };
   body.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
     if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = '¿Seguro?'; return; }
     topes.splice(+b.dataset.del, 1); store('forte-topes', topes); ui.render();
@@ -260,6 +328,7 @@ function decir(t) { F.speak(t); F.emit('alert', { id: 'voz', text: t, kind: 'ok'
 function procesar(txt) {
   const t = sinAcento(txt || ''), V = F.V;
   if (!t) { ui.toast('No te escuché'); return; }
+  if (/gasolinera/.test(t) && F.nav) { decir('Te llevo a la gasolinera más cercana'); F.nav.gas(); return; }
   if (/gasolinera/.test(t)) { decir('Buscando la gasolinera más cercana'); buscarGas().then(L => { if (!L[0]) return decir('No encontré gasolineras cerca'); decir(`${L[0].name}, a ${fmtD(L[0].d)}`); abrirMapa(L[0].lat, L[0].lon); }).catch(() => decir('Necesito el GPS y datos móviles')); return; }
   if (/gasolina|combustible|tanque/.test(t)) return decir(V.fuel == null ? 'No tengo el dato de gasolina' : `Tienes ${Math.round(V.fuel)} por ciento de gasolina, unos ${Math.round(V.range || 0)} kilómetros`);
   if (/bateria|voltaje/.test(t)) return decir(V.volt == null ? 'No tengo el dato de la batería' : `La batería está en ${V.volt.toFixed(1)} voltios`);
@@ -272,7 +341,8 @@ function procesar(txt) {
     decir(g ? `Tu auto está a ${fmtD(dist(g.lat, g.lon, p.lat, p.lon))}` : 'Abriendo dónde dejaste el auto');
     abrirMapa(p.lat, p.lon, 'walking'); return;
   }
-  if (/tope|bache/.test(t)) return marcarTope();
+  if (/bache/.test(t)) return marcarTope('bache');
+  if (/tope/.test(t)) return marcarTope('tope');
   if (/foto/.test(t)) { if (!ui.cam.stream) ui.camStart().then(() => setTimeout(ui.camFoto, 800)); else ui.camFoto(); return decir('Tomando foto'); }
   if (/graba|video/.test(t)) { (ui.cam.stream ? Promise.resolve() : ui.camStart()).then(() => ui.recStart()); return decir('Grabando'); }
   if (/viaje/.test(t)) return decir(`Llevas ${F.trip.km.toFixed(1)} kilómetros, calificación ${F.scoreVal()}`);
@@ -284,7 +354,7 @@ function procesar(txt) {
 }
 ui.addPanel('voz', 'Comandos de voz', () => {
   body.innerHTML = '<p class="note">Toca el micrófono de arriba y di, por ejemplo:</p><ul class="list">' +
-    ['"¿Cuánta gasolina tengo?"', '"Batería" · "Temperatura" · "Velocidad" · "Rendimiento"', '"Gasolinera" (te lleva a la más cercana)', '"¿Dónde está mi carro?"', '"Tope" (lo guarda)', '"Foto" · "Grabar"', '"Fallas" · "Modo noche" · "Siguiente diseño"'].map(x => `<li>${x}</li>`).join('') + '</ul>' +
+    ['"¿Cuánta gasolina tengo?"', '"Batería" · "Temperatura" · "Velocidad" · "Rendimiento"', '"Gasolinera" (te guía con flechas a la más cercana)', '"¿Dónde está mi carro?"', '"Tope" o "Bache" (lo guarda)', '"Foto" · "Grabar"', '"Fallas" · "Modo noche" · "Siguiente diseño"'].map(x => `<li>${x}</li>`).join('') + '</ul>' +
     btn('vProbar', 'Probar ahora', 'pri');
   $('vProbar').onclick = () => { ui.close(); escuchar(); };
 });
@@ -306,40 +376,54 @@ async function iniciarDeteccion() {
       await cargarScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js');
       await cargarScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
     }
+    F.detStatus = { estado: 'cargando detector', n: 0 };
+    if (window.tf && tf.getBackend && tf.getBackend() !== 'webgl') { try { await tf.setBackend('webgl'); } catch (e) {} }
+    if (window.tf && tf.ready) await tf.ready();
     modelo = modelo || await window.cocoSsd.load({ base: 'mobilenet_v2' });
     detectando = true; F.cfg.deteccion = true; F.save();
     ui.toast('Detección de carros activa');
     ciclo();
   } catch (e) {
+    F.detStatus = { estado: 'error: ' + (e.message || e), n: 0 };
     ui.toast('No se pudo activar la detección: ' + (e.message || e) + '. Necesita internet la primera vez.');
   } finally { cargando = false; }
 }
-function detenerDeteccion() { detectando = false; F.objs = []; F.frontDist = null; F.cfg.deteccion = false; F.save(); }
+function detenerDeteccion() { detectando = false; F.objs = []; F.frontDist = null; F.cfg.deteccion = false; F.save(); F.detStatus = { estado: 'apagada', n: 0 }; }
 F.det = { on: () => iniciarDeteccion(), off: detenerDeteccion };
+// la detección corre sobre una copia chica del cuadro (el visor está escondido)
+const lienzo = document.createElement('canvas'), lctx = lienzo.getContext('2d', { willReadFrequently: true });
+F.detStatus = { estado: 'apagada', n: 0 };
 async function ciclo() {
   if (!detectando) return;
   const v = $('camVid');
+  if (ui.cam.stream && v.paused) v.play().catch(() => {});
+  if (!ui.cam.stream) F.detStatus = { estado: 'sin cámara', n: 0 };
+  else if (!v.videoWidth) F.detStatus = { estado: 'esperando imagen', n: 0 };
   if (ui.cam.stream && v.videoWidth) {
     try {
-      const det = await modelo.detect(v, 8, .5), vw = v.videoWidth, vh = v.videoHeight, focal = vw * .714;
+      const vw = 640, vh = Math.round(640 * v.videoHeight / v.videoWidth), focal = vw * .714;
+      if (lienzo.width !== vw || lienzo.height !== vh) { lienzo.width = vw; lienzo.height = vh; }
+      lctx.drawImage(v, 0, 0, vw, vh);
+      const det = await modelo.detect(lienzo, 12, .4);
       F.objs = det.filter(d => ANCHO[d.class]).map(d => {
         const [x, y, w, h] = d.bbox;
         return { cls: d.class, cx: (x + w / 2) / vw, w: w / vw, h: h / vh, dist: ANCHO[d.class] * focal / Math.max(8, w) };
       });
       const frente = F.objs.filter(o => Math.abs(o.cx - .5) < .16 && o.cls !== 'person').sort((a, b) => a.dist - b.dist)[0];
       F.frontDist = frente ? frente.dist : null;
+      F.detStatus = { estado: 'activa', n: F.objs.filter(o => o.cls !== 'person').length, t: Date.now() };
       const vms = F.S.speed / 3.6;
       if (frente && vms > 4) {
         const seg = frente.dist / vms;
         if (seg < 1.0 && cada('distancia', 6)) F.alert('distancia', `Muy cerca del de adelante: ${Math.round(frente.dist)} m`, 'crit', 'Cuidado, muy cerca');
       }
-    } catch (e) { /* cuadro perdido */ }
+    } catch (e) { F.detStatus = { estado: 'error: ' + (e.message || e), n: 0 }; }
   }
-  setTimeout(ciclo, 250);
+  setTimeout(ciclo, 200);
 }
 ui.addPanel('deteccion', 'Carros alrededor (cámara)', () => {
   body.innerHTML = '<p class="note">Pon el teléfono en un soporte con la cámara trasera viendo hacia el frente. La app detecta carros, motos y personas, los dibuja en el camino del diseño Forte Tesla y te avisa con voz si vas muy pegado al de adelante. Gasta más batería y la primera vez necesita internet para bajar el detector.</p>' +
-    (detectando ? kv('Estado', 'Activa') + kv('Objetos', String(F.objs.length)) + kv('Al frente', F.frontDist == null ? '—' : `${Math.round(F.frontDist)} m`) + btn('dOff', 'Apagar detección')
+    (detectando ? kv('Estado', esc(F.detStatus.estado)) + kv('Backend', window.tf && tf.getBackend ? tf.getBackend() : '—') + kv('Objetos', String(F.objs.length)) + kv('Al frente', F.frontDist == null ? '—' : `${Math.round(F.frontDist)} m`) + btn('dOff', 'Apagar detección')
       : btn('dOn', cargando ? 'Cargando…' : 'Activar detección', 'pri')) +
     '<p class="note">La distancia es aproximada; no sustituye tu atención al manejar.</p>';
   if ($('dOn')) $('dOn').onclick = () => iniciarDeteccion().then(() => ui.render());
@@ -448,7 +532,7 @@ function irGasolinera() {
 }
 
 /* ---- desde el reloj ---- */
-window.forteDash.watchTope = () => { $('btnTope').click(); };
+window.forteDash.watchTope = () => F.marcarTope('tope');
 
 /* ---- la barra ---- */
 const I = {
@@ -457,6 +541,7 @@ const I = {
   carros: '<path d="M4 16v-4l2-5h12l2 5v4z"/><path d="M4 12h16"/><circle cx="8" cy="16" r="1.6"/><circle cx="16" cy="16" r="1.6"/>',
   gas: '<path d="M5 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M4 20h11M7 8h5"/><path d="M14 10h2a2 2 0 0 1 2 2v4a1.5 1.5 0 0 0 3 0V9l-3-3"/>',
   tope: '<path d="M2 18h20M5 18c1.5-5 4-7 7-7s5.5 2 7 7"/>',
+  bache: '<path d="M3 15h4l2 3h6l2-3h4"/><path d="M8 12l1-2M12 11V8M16 12l-1-2"/>',
   carro: '<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
   ubic: '<path d="M4 12l16-8-6 16-2.5-6.5z"/>',
   radar: '<circle cx="12" cy="13" r="3"/><path d="M6.5 7.5a8 8 0 0 1 11 0M4 5a11.5 11.5 0 0 1 16 0"/>',
@@ -467,8 +552,9 @@ const BOTONES = [
   ['rec', 'Grabar', () => { const c = ui.cam; if (c.rec) { ui.recStop(); } else (c.stream ? Promise.resolve() : ui.camStart()).then(() => { if (ui.cam.stream) ui.recStart(); pintar(); }); pintar(); }],
   ['evento', 'Guardar', guardarEvento],
   ['carros', 'Carros', () => { if (F.cfg.deteccion) { F.det.off(); ui.toast('Detección de carros apagada'); pintar(); } else { ui.toast('Activando la detección…'); F.det.on().then(pintar); } }],
-  ['gas', 'Gasolina', irGasolinera],
-  ['tope', 'Tope', () => $('btnTope').click()],
+  ['gas', 'Gasolina', () => F.nav ? (F.nav.activo() ? F.nav.parar(true) : F.nav.gas()) : irGasolinera()],
+  ['tope', 'Tope', () => F.marcarTope('tope')],
+  ['bache', 'Bache', () => F.marcarTope('bache')],
   ['carro', 'Mi carro', () => ui.open('estacionado')],
   ['ubic', 'Ubicación', mandarUbicacion],
   ['radar', 'Radares', () => { F.cfg.radares = F.cfg.radares === false; F.save(); ui.toast(F.cfg.radares ? 'Aviso de radares activado' : 'Aviso de radares apagado'); pintar(); }],
@@ -481,7 +567,7 @@ dock.innerHTML = BOTONES.map(([id, l]) => `<button type="button" data-b="${id}">
 document.body.appendChild(dock);
 dock.querySelectorAll('button').forEach(b => { const def = BOTONES.find(x => x[0] === b.dataset.b); b.onclick = () => def[2](); });
 function pintar() {
-  const on = { rec: !!ui.cam.rec, carros: !!F.cfg.deteccion, radar: F.cfg.radares !== false };
+  const on = { rec: !!ui.cam.rec, carros: !!F.cfg.deteccion, radar: F.cfg.radares !== false, gas: !!(F.nav && F.nav.activo()) };
   dock.querySelectorAll('button').forEach(b => b.classList.toggle('on', !!on[b.dataset.b]));
 }
 setInterval(pintar, 1000); pintar();

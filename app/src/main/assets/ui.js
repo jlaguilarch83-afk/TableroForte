@@ -445,6 +445,7 @@ async function camStart() {
     if (window.OBD && OBD.askCamera && !OBD.hasCamera()) { OBD.askCamera(); toast('Acepta el permiso de cámara y vuelve a intentar'); return; }
     cam.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
     $('camVid').srcObject = cam.stream; $('camBox').hidden = false; $('btnShot').hidden = false;
+    try { await $('camVid').play(); } catch (e) {}
   } catch (e) { toast('No se pudo abrir la cámara: ' + (e.message || e.name)); }
 }
 function camStop() {

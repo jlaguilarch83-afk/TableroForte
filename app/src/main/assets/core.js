@@ -31,13 +31,16 @@ const DEF = {
 F.cfg = Object.assign({}, DEF, F.store('forte-ajustes') || {});
 F.cfg.valet = Object.assign({}, DEF.valet, F.cfg.valet || {});
 F.cfg.nivel = Object.assign({}, DEF.nivel, F.cfg.nivel || {});
+F.syncServicio = () => {
+  if (!(window.OBD && OBD.config)) return;
+  const c = F.cfg, lim = c.valet.on ? c.valet.limite : (F.limiteActivo || c.limite);
+  const txt = c.valet.on ? c.valet.limite : (F.streetLimit ? F.streetLimit.v : c.limite);
+  OBD.config(JSON.stringify({ limite: lim, limiteTxt: txt, gasAviso: c.gasAviso, estacionadoMin: c.estacionadoMin, voz: c.voz }));
+};
 F.save = () => {
   F.store('forte-ajustes', F.cfg);
+  F.syncServicio();
   // el servicio de la app habla las alertas aunque la pantalla esté apagada o en Android Auto
-  if (window.OBD && OBD.config) {
-    const c = F.cfg;
-    OBD.config(JSON.stringify({ limite: c.valet.on ? c.valet.limite : c.limite, gasAviso: c.gasAviso, estacionadoMin: c.estacionadoMin, voz: c.voz }));
-  }
 };
 F.save();
 
@@ -255,11 +258,12 @@ function funciones(dt) {
   if (S.rpm > 4500 && cada('rpm', 6)) penal(1, 'Revoluciones altas');
 
   // límite de velocidad y modo valet
-  const lim = F.cfg.valet.on ? F.cfg.valet.limite : F.cfg.limite;
-  if (lim > 0 && v > lim + 1) {
+  const lim = F.cfg.valet.on ? F.cfg.valet.limite : (F.limiteActivo || F.cfg.limite);
+  const limTxt = F.cfg.valet.on ? F.cfg.valet.limite : (F.streetLimit ? F.streetLimit.v : F.cfg.limite);
+  if (lim > 0 && v > lim) {
     overSeg += dt;
     if (overSeg > 1 && cada('vel', 15)) {
-      F.alert('vel', `Vas a ${Math.round(v)} km/h. Límite: ${lim}`, 'crit', 'Exceso de velocidad');
+      F.alert('vel', `Vas a ${Math.round(v)} km/h. Límite: ${limTxt}`, 'crit', `Vas a ${Math.round(v)}, el límite es ${limTxt}`);
       penal(2, 'Exceso de velocidad');
       if (F.cfg.valet.on) { F.valetLog.push({ t: Date.now(), v: Math.round(v) }); if (F.valetLog.length > 200) F.valetLog.shift(); F.store('forte-valet', F.valetLog); }
     }
