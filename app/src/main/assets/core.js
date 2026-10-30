@@ -35,7 +35,7 @@ F.syncServicio = () => {
   if (!(window.OBD && OBD.config)) return;
   const c = F.cfg, lim = c.valet.on ? c.valet.limite : (F.limiteActivo || c.limite);
   const txt = c.valet.on ? c.valet.limite : (F.streetLimit ? F.streetLimit.v : c.limite);
-  OBD.config(JSON.stringify({ limite: lim, limiteTxt: txt, gasAviso: c.gasAviso, estacionadoMin: c.estacionadoMin, voz: c.voz }));
+  OBD.config(JSON.stringify({ limite: lim, limiteTxt: txt, gasAviso: c.gasAviso, estacionadoMin: c.estacionadoMin, voz: c.voz, batSiempre: c.batSiempre !== false }));
 };
 F.save = () => {
   F.store('forte-ajustes', F.cfg);
@@ -241,11 +241,11 @@ function funciones(dt) {
     const t = (performance.now() - P.t0) / 1000;
     if (!P.hecho100 && v >= 100) {
       P.hecho100 = true; F.perf.c100 = t; if (!F.perf.b100 || t < F.perf.b100) F.perf.b100 = t;
-      F.store('forte-tiempos', F.perf); F.alert('perf', `0 a 100 km/h en ${t.toFixed(1)} s`, 'ok', true);
+      F.store('forte-tiempos', F.perf); F.alert('perf', `0 a 100 km/h en ${t.toFixed(1)} s`, 'ok', !F.dragActivo);
     }
     if (!P.hechoQM && P.dist >= 402.3) {
       P.hechoQM = true; F.perf.qm = t; F.perf.trap = v; if (!F.perf.bqm || t < F.perf.bqm) F.perf.bqm = t;
-      F.store('forte-tiempos', F.perf); F.alert('perf', `Cuarto de milla: ${t.toFixed(1)} s a ${Math.round(v)} km/h`, 'ok', true);
+      F.store('forte-tiempos', F.perf); F.alert('perf', `Cuarto de milla: ${t.toFixed(1)} s a ${Math.round(v)} km/h`, 'ok', !F.dragActivo);
     }
     if (t > 60) P.armado = false;
   }

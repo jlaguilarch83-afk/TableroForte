@@ -155,10 +155,10 @@ const PANELES = {
   },
 
   bateria() {
-    const tipoTxt = { reposo: 'En reposo (auto apagado)', arranque: 'Al arrancar (mínimo)', carga: 'Con el motor encendido' };
+    const tipoTxt = { reposo: 'En reposo (auto apagado)', arranque: 'Al arrancar (mínimo)', carga: 'Con el motor encendido', prueba: 'Prueba al arrancar' };
     const hora = t => new Date(t).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
     const reposoTxt = v => v >= 12.6 ? ['Llena', 'g'] : v >= 12.4 ? ['Alrededor de 75 %', 'g'] : v >= 12.2 ? ['Alrededor de 50 %', 'a'] : v >= 12.0 ? ['Alrededor de 25 %', 'r'] : ['Descargada', 'r'];
-    const arranqueTxt = v => v >= 10 ? ['Bien', 'g'] : v >= 9.6 ? ['Regular', 'a'] : ['Débil', 'r'];
+    const arranqueTxt = v => v >= 10.2 ? ['Bien', 'g'] : v >= 9.6 ? ['Regular', 'a'] : ['Débil', 'r'];
     const cargaTxt = v => v >= 13.2 ? ['Cargando bien', 'g'] : v >= 12.4 ? ['Carga baja (normal en Kia a velocidad constante)', 'a'] : ['No está cargando', 'r'];
     const paint = () => {
       const v = F.D.volt, on = F.S.rpm >= 400, log = F.batteryLog(), ult = t => log.filter(e => e.tipo === t).slice(-1)[0];
@@ -167,7 +167,8 @@ const PANELES = {
       const res = (e, f) => e ? `${n(e.v, 2)} V · <span class="${f(e.v)[1]}">${f(e.v)[0]}</span>` : '—';
       body.querySelector('.bnow').innerHTML =
         `<div class="bigval">${n(v, 2)}<small> V</small></div><p class="note"><span class="${cls}">${ahora}</span>${on ? ' · motor encendido' : ''}</p>` +
-        kv('Último reposo', res(ult('reposo'), reposoTxt)) + kv('Último arranque', res(ult('arranque'), arranqueTxt)) + kv('Con motor encendido', res(ult('carga'), cargaTxt));
+        kv('Último reposo', res(ult('reposo'), reposoTxt)) + kv('Último arranque', res(ult('arranque'), arranqueTxt)) + kv('Con motor encendido', res(ult('carga'), cargaTxt)) +
+        (ult('prueba') ? `<p class="note ${['', 'warnbox', 'warnbox'][ult('prueba').estado || 0]}"><b>Prueba al arrancar (${hora(ult('prueba').t)}):</b> ${esc(ult('prueba').texto || '')}</p>` : '');
       const rep = log.filter(e => e.tipo === 'reposo');
       let tendencia = '';
       if (rep.length >= 2) {

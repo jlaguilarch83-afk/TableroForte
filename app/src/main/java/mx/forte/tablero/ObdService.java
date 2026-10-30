@@ -361,6 +361,9 @@ public class ObdService extends Service {
     private long lastLoop = 0;
     private Double prevRpm = null;
     private double crankMin = 99;
+    // prueba de batería al arrancar
+    private Double restV = null, testCrank = null, testRest = null;
+    private long testAt = 0;
     private long engineOnSince = 0;
     private boolean runningLogged = false;
 
@@ -377,10 +380,15 @@ public class ObdService extends Service {
         while (running) {
             JSONObject o = new JSONObject();
             List<String> todo = new ArrayList<>();
-            for (String p : fast) todo.add(p);
-            todo.add(slow[turn % slow.length]);
             // con el motor apagado o arrancando se mide la batería seguido
             boolean engineOff = rpm == null || rpm < 400;
+            if (engineOff && turn % 4 != 0) {
+                // solo revoluciones y voltaje, rápido, para alcanzar a ver cuánto baja al dar marcha
+                todo.add("0C");
+            } else {
+                for (String p : fast) todo.add(p);
+                todo.add(slow[turn % slow.length]);
+            }
             if (engineOff || turn % 3 == 0) todo.add("RV");
             turn++;
 
@@ -553,17 +561,25 @@ public class ObdService extends Service {
             boolean on = rpm >= 400;
             if (!on) {
                 crankMin = Math.min(crankMin, volt);
+                if (rpm < 100 && volt > 10.5) restV = volt;
                 engineOnSince = 0;
                 runningLogged = false;
                 if (rpm < 100 && volt < 11.9) alert("bat_off", "Batería baja con el motor apagado: " + fmt1(volt) + " voltios", 600);
             } else {
                 if (prevRpm != null && prevRpm < 400 && crankMin < 99) {
                     battery("arranque", crankMin);
-                    if (crankMin < 9.6) alert("bat_crank", "La batería bajó a " + fmt1(crankMin) + " voltios al arrancar. Puede estar débil", 3600);
+                    // la prueba se termina cuando el alternador ya está cargando
+                    testRest = restV;
+                    testCrank = restV != null && crankMin < restV - 0.4 ? crankMin : (restV == null ? crankMin : null);
+                    testAt = now;
                 }
                 crankMin = 99;
                 if (engineOnSince == 0) engineOnSince = now;
                 long onFor = now - engineOnSince;
+                if (testAt > 0 && now - testAt > 20000) {
+                    pruebaBateria(testCrank, testRest, volt);
+                    testAt = 0;
+                }
                 if (!runningLogged && onFor > 60000) {
                     runningLogged = true;
                     battery("carga", volt);
@@ -590,8 +606,45 @@ public class ObdService extends Service {
         }
     }
 
-    /** Guarda un registro de batería: reposo, arranque (voltaje mínimo) o carga (motor encendido). */
+    /**
+     * Prueba de batería al dar marcha: qué tanto bajó el voltaje (lo más confiable),
+     * o si no se alcanzó a medir, el voltaje antes de arrancar. Luego revisa que cargue.
+     * 0 = bien, 1 = regular, 2 = fallando.
+     */
+    private void pruebaBateria(Double crank, Double rest, double carga) {
+        int nivel;
+        String det;
+        if (crank != null) {
+            nivel = crank >= 10.2 ? 0 : crank >= 9.6 ? 1 : 2;
+            det = "Bajó a " + fmt1(crank) + " voltios al arrancar";
+        } else if (rest != null) {
+            nivel = rest >= 12.4 ? 0 : rest >= 12.1 ? 1 : 2;
+            det = "Tenía " + fmt1(rest) + " voltios antes de arrancar";
+        } else return;
+        boolean cargaBaja = carga < 12.6;
+        if (cargaBaja) nivel = Math.max(nivel, 1);
+        det += cargaBaja ? " y el alternador apenas carga a " + fmt1(carga) : " y carga a " + fmt1(carga);
+        String[] palabra = {"bien", "regular", "está fallando"};
+        String texto = "Prueba de batería: " + palabra[nivel] + ". " + det + "." + (nivel == 2 ? " Revísala pronto." : nivel == 1 ? " Vigílala." : "");
+        try {
+            JSONObject extra = new JSONObject();
+            extra.put("estado", nivel);
+            extra.put("carga", Math.round(carga * 100) / 100.0);
+            if (rest != null) extra.put("reposo", Math.round(rest * 100) / 100.0);
+            extra.put("medido", crank != null ? "arranque" : "reposo");
+            extra.put("texto", texto);
+            battery("prueba", crank != null ? crank : rest, extra);
+        } catch (Exception ignored) {
+        }
+        if (nivel > 0 || sp.getBoolean("bat_siempre", true)) alert("bat_test", texto, 0);
+    }
+
     private void battery(String tipo, double v) {
+        battery(tipo, v, null);
+    }
+
+    /** Guarda un registro de batería: reposo, arranque (voltaje mínimo), carga (motor encendido) o prueba. */
+    private void battery(String tipo, double v, JSONObject extra) {
         try {
             JSONArray a = new JSONArray(sp.getString("bat_log", "[]"));
             if (a.length() > 0) {
@@ -602,6 +655,10 @@ public class ObdService extends Service {
             e.put("t", System.currentTimeMillis());
             e.put("tipo", tipo);
             e.put("v", Math.round(v * 100) / 100.0);
+            if (extra != null) {
+                JSONArray ks = extra.names();
+                for (int i = 0; ks != null && i < ks.length(); i++) e.put(ks.getString(i), extra.get(ks.getString(i)));
+            }
             a.put(e);
             JSONArray out = new JSONArray();
             for (int i = Math.max(0, a.length() - 60); i < a.length(); i++) out.put(a.get(i));

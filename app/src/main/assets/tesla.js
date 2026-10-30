@@ -85,15 +85,31 @@ function camino(c, V) {
     const eg = c.createLinearGradient(0, HZ, 0, 620); eg.addColorStop(0, 'rgba(0,0,0,0)'); eg.addColorStop(.35, P.edge);
     c.strokeStyle = eg; c.beginPath(); c.moveTo(px(s * ORILLA, 0), py(0)); c.lineTo(px(s * ORILLA, 140), py(140)); c.stroke();
   }
-  // líneas de carril que avanzan
+  // líneas de carril que avanzan (si la cámara ve el carril, se ponen donde de verdad están)
   const fase = dist % 9;
+  const ln = F.lane && F.lane.ok && performance.now() - F.lane.t < 1200 ? F.lane : null;
+  const LX = ln ? [-1.75 - ln.off, 1.75 - ln.off] : [-1.8, 1.8];
+  if (ln) {
+    // franja brillante del carril detectado
+    ['izq', 'der'].forEach((lado, i) => {
+      const L = LX[i], warn = ln.warn === lado && performance.now() - ln.warnT < 1500;
+      if (!(i === 0 ? ln.l : ln.r)) return;
+      const col = warn ? (Math.floor(F.t * 8) % 2 ? '#ff2a3b' : '#ff8a8a') : P.acc;
+      c.save(); c.globalAlpha = warn ? .9 : .55;
+      c.beginPath();
+      c.moveTo(px(L - .12, 0), py(0)); c.lineTo(px(L - .12, 70), py(70)); c.lineTo(px(L + .12, 70), py(70)); c.lineTo(px(L + .12, 0), py(0)); c.closePath();
+      const lg = c.createLinearGradient(0, py(70), 0, 620); lg.addColorStop(0, 'rgba(0,0,0,0)'); lg.addColorStop(.3, col); lg.addColorStop(1, col);
+      c.fillStyle = lg; c.shadowColor = col; c.shadowBlur = 18; c.fill();
+      c.restore();
+    });
+  }
   c.fillStyle = P.lane;
-  for (const s of [-1, 1]) {
+  for (const L of LX) {
     for (let d0 = -fase; d0 < 140; d0 += 9) {
       const a = Math.max(0, d0), b = d0 + 3; if (b <= 0) continue;
       const w0 = .07 * 600 / (a + 5.4), w1 = .07 * 600 / (b + 5.4);
       c.beginPath();
-      c.moveTo(px(s * 1.8, a) - w0, py(a)); c.lineTo(px(s * 1.8, b) - w1, py(b)); c.lineTo(px(s * 1.8, b) + w1, py(b)); c.lineTo(px(s * 1.8, a) + w0, py(a)); c.closePath();
+      c.moveTo(px(L, a) - w0, py(a)); c.lineTo(px(L, b) - w1, py(b)); c.lineTo(px(L, b) + w1, py(b)); c.lineTo(px(L, a) + w0, py(a)); c.closePath();
       c.globalAlpha = clamp(1 - b / 140, 0, 1); c.fill();
     }
   }
@@ -114,6 +130,7 @@ function hacerFantasmas() {
   fantasma = mk('#f2f4f7', .62); fantasmaRojo = mk('#ff2a3b', .55);
 }
 function vehiculos(c) {
+  if (!F.cfg.deteccion) return;
   const L = (F.objs || []).filter(o => o.cls === 'car' || o.cls === 'truck' || o.cls === 'bus' || o.cls === 'motorcycle');
   if (carOk && !fantasma) hacerFantasmas();
   for (const o of L.slice().sort((a, b) => b.dist - a.dist)) {
@@ -221,8 +238,10 @@ const def = {
     V0 = V;
     camino(c, V);
     vehiculos(c);
+    F.emit('teslaCamino', c);   // peatones, ciclistas, semáforo
     peligro(c);
     auto(c, V);
+    F.emit('teslaFx', c);       // lluvia, nieve, granizo
 
     // aviso arriba del auto
     if (alerta && F.t - alerta.t < 6) {
@@ -317,6 +336,8 @@ const def = {
   }
 };
 
+// para que otros módulos dibujen sobre el mismo camino
+F.tesla = { px, py, P, ORILLA, night: () => nightMix, sport: () => sportMix };
 // va después del diseño azul en la lista
 F.SKINS.splice(1, 0, Object.assign({ kind: 'canvas' }, def));
 })();

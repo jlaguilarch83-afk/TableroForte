@@ -64,7 +64,8 @@ import java.util.Set;
 public class MainActivity extends Activity implements ObdService.Listener {
 
     private static final String HOST = "forte.app";
-    private static final int REQ_BT = 7, REQ_LOC = 8, REQ_CAM = 9, REQ_VOZ = 10, REQ_MIC = 11;
+    private static final int REQ_BT = 7, REQ_LOC = 8, REQ_CAM = 9, REQ_VOZ = 10, REQ_MIC = 11, REQ_CONTACTO = 12, REQ_SMS = 13;
+    private String[] pendingSms = null;
 
     private WebView web;
     private BluetoothAdapter adapter;
@@ -208,6 +209,22 @@ public class MainActivity extends Activity implements ObdService.Listener {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_CONTACTO) {
+            String nombre = "", tel = "";
+            if (res == RESULT_OK && data != null && data.getData() != null) {
+                try (android.database.Cursor c = getContentResolver().query(data.getData(),
+                        new String[]{android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                                android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER}, null, null, null)) {
+                    if (c != null && c.moveToFirst()) {
+                        nombre = c.getString(0);
+                        tel = c.getString(1);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            js("window.forteDash&&forteDash.contact&&forteDash.contact(" + JSONObject.quote(nombre == null ? "" : nombre) + "," + JSONObject.quote(tel == null ? "" : tel) + ")");
+            return;
+        }
         if (req != REQ_VOZ) return;
         String txt = "";
         if (res == RESULT_OK && data != null) {
@@ -222,9 +239,30 @@ public class MainActivity extends Activity implements ObdService.Listener {
         super.onRequestPermissionsResult(code, perms, res);
         boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
         if (code == REQ_LOC && ok) startGpsInternal();
+        if (code == REQ_SMS && pendingSms != null) {
+            String[] m = pendingSms;
+            pendingSms = null;
+            if (ok) enviarSms(m[0], m[1]);
+            js("window.forteDash&&forteDash.smsPermiso&&forteDash.smsPermiso(" + ok + ")");
+        }
         if (code == REQ_CAM && pendingCam != null) {
             if (ok) pendingCam.grant(pendingCam.getResources()); else pendingCam.deny();
             pendingCam = null;
+        }
+    }
+
+    /** Manda un SMS sin abrir otra app (para el aviso de choque). */
+    private boolean enviarSms(String tel, String texto) {
+        try {
+            android.telephony.SmsManager sm = Build.VERSION.SDK_INT >= 31
+                    ? getSystemService(android.telephony.SmsManager.class)
+                    : android.telephony.SmsManager.getDefault();
+            if (sm == null) return false;
+            java.util.ArrayList<String> partes = sm.divideMessage(texto);
+            sm.sendMultipartTextMessage(tel, null, partes, null, null);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -497,6 +535,7 @@ public class MainActivity extends Activity implements ObdService.Listener {
                         .putInt("gas_aviso", o.optInt("gasAviso", 15))
                         .putInt("estacionado_min", o.optInt("estacionadoMin", 5))
                         .putBoolean("voz", o.optBoolean("voz", true))
+                        .putBoolean("bat_siempre", o.optBoolean("batSiempre", true))
                         .apply();
             } catch (Exception ignored) {
             }
@@ -568,6 +607,59 @@ public class MainActivity extends Activity implements ObdService.Listener {
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 } catch (Exception ignored) {
+                }
+            });
+        }
+
+        /** Abre la lista de contactos para elegir a quién avisar si hay un choque. */
+        @JavascriptInterface
+        public void pickContact() {
+            runOnUiThread(() -> {
+                Intent i = new Intent(Intent.ACTION_PICK, android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI);
+                try {
+                    startActivityForResult(i, REQ_CONTACTO);
+                } catch (Exception e) {
+                    js("window.forteDash&&forteDash.contact&&forteDash.contact('','')");
+                }
+            });
+        }
+
+        /** Pide el permiso de SMS (sin mandar nada). */
+        @JavascriptInterface
+        public boolean smsAllowed() {
+            return has(Manifest.permission.SEND_SMS);
+        }
+
+        @JavascriptInterface
+        public void askSms() {
+            if (has(Manifest.permission.SEND_SMS)) return;
+            runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.SEND_SMS}, REQ_SMS));
+        }
+
+        /** Manda un SMS directo; si falta el permiso lo pide y lo manda al aceptarlo. */
+        @JavascriptInterface
+        public boolean sms(final String tel, final String texto) {
+            if (has(Manifest.permission.SEND_SMS)) return enviarSms(tel, texto);
+            pendingSms = new String[]{tel, texto};
+            runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.SEND_SMS}, REQ_SMS));
+            return false;
+        }
+
+        /** Abre el chat de WhatsApp de ese número con el texto listo. */
+        @JavascriptInterface
+        public void whatsapp(final String tel, final String texto) {
+            runOnUiThread(() -> {
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=" + Uri.encode(tel) + "&text=" + Uri.encode(texto)));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                i.setPackage("com.whatsapp");
+                try {
+                    startActivity(i);
+                } catch (ActivityNotFoundException e) {
+                    i.setPackage(null);
+                    try {
+                        startActivity(i);
+                    } catch (Exception ignored) {
+                    }
                 }
             });
         }

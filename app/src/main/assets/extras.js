@@ -100,6 +100,7 @@ setInterval(() => {
   F.streetLimit = nuevo;
   if (cambio) actualizarLimite();
 }, 2000);
+F.on('tolerancia', () => actualizarLimite());
 function actualizarLimite() {
   const tol = F.cfg.tolerancia ?? 5;
   F.limiteActivo = F.streetLimit ? F.streetLimit.v + tol : null;
@@ -366,6 +367,8 @@ const ANCHO = { car: 1.8, truck: 2.5, bus: 2.5, motorcycle: .8, bicycle: .6, per
 function cargarScript(src) {
   return new Promise((ok, mal) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => mal(new Error('no cargó ' + src)); document.head.appendChild(s); });
 }
+// el detector corre si lo pide cualquiera: carros, peatones o semáforo
+const quiereModelo = () => !!(F.cfg.deteccion || (F.cfg.peatones && F.cfg.peatones !== 'off') || F.cfg.semaforo);
 async function iniciarDeteccion() {
   if (detectando || cargando) return;
   cargando = true;
@@ -380,16 +383,18 @@ async function iniciarDeteccion() {
     if (window.tf && tf.getBackend && tf.getBackend() !== 'webgl') { try { await tf.setBackend('webgl'); } catch (e) {} }
     if (window.tf && tf.ready) await tf.ready();
     modelo = modelo || await window.cocoSsd.load({ base: 'mobilenet_v2' });
-    detectando = true; F.cfg.deteccion = true; F.save();
-    ui.toast('Detección de carros activa');
+    detectando = true;
+    ui.toast('Cámara inteligente activa');
     ciclo();
   } catch (e) {
     F.detStatus = { estado: 'error: ' + (e.message || e), n: 0 };
     ui.toast('No se pudo activar la detección: ' + (e.message || e) + '. Necesita internet la primera vez.');
   } finally { cargando = false; }
 }
-function detenerDeteccion() { detectando = false; F.objs = []; F.frontDist = null; F.cfg.deteccion = false; F.save(); F.detStatus = { estado: 'apagada', n: 0 }; }
-F.det = { on: () => iniciarDeteccion(), off: detenerDeteccion };
+function detenerDeteccion() { detectando = false; F.objs = []; F.frontDist = null; F.detStatus = { estado: 'apagada', n: 0 }; F.emit('det', null); }
+// prende o apaga el detector según lo que esté activado
+F.visionRevisar = () => { if (quiereModelo()) return iniciarDeteccion(); if (detectando) detenerDeteccion(); return Promise.resolve(); };
+F.det = { on: () => { F.cfg.deteccion = true; F.save(); return F.visionRevisar(); }, off: () => { F.cfg.deteccion = false; F.save(); F.visionRevisar(); } };
 // la detección corre sobre una copia chica del cuadro (el visor está escondido)
 const lienzo = document.createElement('canvas'), lctx = lienzo.getContext('2d', { willReadFrequently: true });
 F.detStatus = { estado: 'apagada', n: 0 };
@@ -404,16 +409,18 @@ async function ciclo() {
       const vw = 640, vh = Math.round(640 * v.videoHeight / v.videoWidth), focal = vw * .714;
       if (lienzo.width !== vw || lienzo.height !== vh) { lienzo.width = vw; lienzo.height = vh; }
       lctx.drawImage(v, 0, 0, vw, vh);
-      const det = await modelo.detect(lienzo, 12, .4);
-      F.objs = det.filter(d => ANCHO[d.class]).map(d => {
+      const det = await modelo.detect(lienzo, 20, .35);
+      if (!detectando) return;
+      F.emit('det', { det, lienzo, lctx, vw, vh, focal });
+      F.objs = det.filter(d => ANCHO[d.class] && d.score >= .4).map(d => {
         const [x, y, w, h] = d.bbox;
         return { cls: d.class, cx: (x + w / 2) / vw, w: w / vw, h: h / vh, dist: ANCHO[d.class] * focal / Math.max(8, w) };
       });
-      const frente = F.objs.filter(o => Math.abs(o.cx - .5) < .16 && o.cls !== 'person').sort((a, b) => a.dist - b.dist)[0];
+      const frente = F.objs.filter(o => Math.abs(o.cx - .5) < .16 && o.cls !== 'person' && o.cls !== 'bicycle').sort((a, b) => a.dist - b.dist)[0];
       F.frontDist = frente ? frente.dist : null;
-      F.detStatus = { estado: 'activa', n: F.objs.filter(o => o.cls !== 'person').length, t: Date.now() };
+      F.detStatus = { estado: 'activa', n: F.objs.filter(o => o.cls !== 'person' && o.cls !== 'bicycle').length, t: Date.now() };
       const vms = F.S.speed / 3.6;
-      if (frente && vms > 4) {
+      if (frente && vms > 4 && F.cfg.deteccion) {
         const seg = frente.dist / vms;
         if (seg < 1.0 && cada('distancia', 6)) F.alert('distancia', `Muy cerca del de adelante: ${Math.round(frente.dist)} m`, 'crit', 'Cuidado, muy cerca');
       }
@@ -426,10 +433,10 @@ ui.addPanel('deteccion', 'Carros alrededor (cámara)', () => {
     (detectando ? kv('Estado', esc(F.detStatus.estado)) + kv('Backend', window.tf && tf.getBackend ? tf.getBackend() : '—') + kv('Objetos', String(F.objs.length)) + kv('Al frente', F.frontDist == null ? '—' : `${Math.round(F.frontDist)} m`) + btn('dOff', 'Apagar detección')
       : btn('dOn', cargando ? 'Cargando…' : 'Activar detección', 'pri')) +
     '<p class="note">La distancia es aproximada; no sustituye tu atención al manejar.</p>';
-  if ($('dOn')) $('dOn').onclick = () => iniciarDeteccion().then(() => ui.render());
-  if ($('dOff')) $('dOff').onclick = () => { detenerDeteccion(); ui.render(); };
+  if ($('dOn')) $('dOn').onclick = () => F.det.on().then(() => ui.render());
+  if ($('dOff')) $('dOff').onclick = () => { F.det.off(); ui.render(); };
 });
-if (F.cfg.deteccion && F.app) setTimeout(iniciarDeteccion, 3000);
+if (quiereModelo() && F.app) setTimeout(iniciarDeteccion, 3000);
 })();
 
 /* ================= barra de botones de Forte Tesla ================= */
@@ -530,6 +537,8 @@ function irGasolinera() {
       if (window.OBD && OBD.openUrl) OBD.openUrl(url); else window.open(url, '_blank', 'noopener');
     }).catch(() => ui.toast('No se pudo buscar. Revisa los datos móviles.'));
 }
+
+F.guardarEvento = guardarEvento;
 
 /* ---- desde el reloj ---- */
 window.forteDash.watchTope = () => F.marcarTope('tope');

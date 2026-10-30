@@ -24,6 +24,18 @@ App Android que muestra el tablero digital y lee tu Kia Forte 2020 con el adapta
 3. Toca el botón de arriba a la izquierda, elige tu OBDII. La próxima vez se conecta solo.
 4. Pestaña **Fallas** › Leer fallas para ver códigos del check engine.
 
+## Novedades 3.3 · menú de tres puntitos (⋮) en Forte Tesla
+- **Salida de carril:** la cámara ve las líneas, las dibuja en el camino y avisa (pitido del lado de la línea, o voz) arriba de 45 km/h. "Calibrar centro del carril" con el auto bien centrado.
+- **Peatones y ciclistas** al frente: pitido o voz.
+- **Semáforo:** "Semáforo en rojo, para" y "Verde, avanza". Es una ayuda; puede fallar de noche o con el sol de frente.
+- **Tolerancia del límite** con + y −.
+- **Ralentí raro** (motor caliente y detenido): avisa si baila, está bajo o alto.
+- **Prueba de batería al arrancar:** dice bien, regular o fallando (siempre o solo si falla).
+- **Modo arrancones:** botón Arrancón con semáforo, reacción, 0 a 60, 0 a 100 y 400 m, con mejores tiempos.
+- **Sonido de motor:** 10 estilos generados con tus revoluciones (no son grabaciones).
+- **Detector de choque:** golpe fuerte y el carro se detiene → 30 s para responder; si no, manda SMS con tu ubicación al contacto y abre WhatsApp con el mensaje listo.
+- **Clima:** lluvia, tormenta, nieve o granizo en la pantalla cuando de verdad está pasando, y aviso si viene más adelante.
+
 ## Qué trae (versión 2.0)
 - 20 diseños de tablero (menú › Diseños).
 - Viaje y compartir por WhatsApp, mapa del viaje con GPS, clima con amanecer y atardecer.
