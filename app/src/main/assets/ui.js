@@ -102,7 +102,17 @@ function render() {
   const title = seccion ? SECCIONES.find(s => s[0] === seccion)[1] : 'Menú';
   $('dTitle').textContent = title; $('dBack').hidden = !seccion;
   if (!seccion) {
-    body.innerHTML = '<div class="nav">' + SECCIONES.map(([id, l]) => `<button type="button" data-sec="${id}">${l}</button>`).join('') + '</div>';
+    // agrupado: lo que se consulta y se ajusta (lo que se prende o apaga está en el menú de tres puntitos)
+    const GRUPOS = [['Mi carro', ['conexion', 'bateria', 'fallas', 'salud', 'aceite', 'estacionado']],
+      ['Viajes', ['viaje', 'ultimo', 'mapa', 'resumen', 'gasolina', 'gasolineras', 'navgas', 'herramientas']],
+      ['Cámara y calle', ['placas', 'deteccion', 'topes', 'limites']],
+      ['Pantalla y ajustes', ['disenos', 'musica', 'clima', 'voz', 'alertas', 'ajustes']]];
+    const usados = new Set(GRUPOS.flatMap(g => g[1]));
+    const resto = SECCIONES.filter(([id]) => !usados.has(id)).map(([id]) => id);
+    if (resto.length) GRUPOS.push(['Más', resto]);
+    const nom = id => (SECCIONES.find(x => x[0] === id) || [])[1];
+    body.innerHTML = GRUPOS.map(([g, ids]) => `<h3 class="navG">${g}</h3><div class="nav">` +
+      ids.filter(nom).map(id => `<button type="button" data-sec="${id}">${nom(id)}</button>`).join('') + '</div>').join('');
     body.querySelectorAll('[data-sec]').forEach(b => b.onclick = () => { seccion = b.dataset.sec; render(); });
     return;
   }

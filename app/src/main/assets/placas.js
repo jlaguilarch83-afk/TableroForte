@@ -224,6 +224,12 @@ function colorCarro(src, x, y, w, h) {
   return Object.keys(votos).sort((a, b) => votos[b] - votos[a])[0] || '—';
 }
 
+ui.addPanel('placas', 'Fotos de placas', () => {
+  const { body, btn } = ui.h;
+  body.innerHTML = `<p class="note">${lista.length} fotos guardadas. Se toman solas cuando un carro va justo enfrente (actívalo en el menú de tres puntitos › Cámara).</p>` + btn('plAbrir', 'Abrir fotos de placas', 'pri');
+  $('plAbrir').onclick = () => { ui.close(); F.placasVer(); };
+});
+
 /* ================= recuadro chiquito en pantalla ================= */
 const mi = document.createElement('button'); mi.type = 'button'; mi.id = 'placaMini'; mi.hidden = true;
 document.body.appendChild(mi);

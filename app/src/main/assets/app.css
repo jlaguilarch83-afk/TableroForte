@@ -53,6 +53,8 @@ html.hud #stage{transform:scaleY(-1)}
 .dhead button{border:1px solid var(--line);background:rgba(47,123,255,.12);border-radius:10px;padding:7px 12px;cursor:pointer;font-size:14px}
 #dBody{flex:1;overflow:auto;padding:12px 2px 20px;display:flex;flex-direction:column;gap:10px}
 #dBody h3{margin:10px 0 0;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--label)}
+#dBody h3.navG{margin:16px 0 8px}
+#dBody h3.navG:first-child{margin-top:2px}
 #dBody > button,#dBody .row button{border:1px solid var(--line);background:rgba(47,123,255,.14);border-radius:12px;padding:12px 14px;font-size:15px;font-weight:600;cursor:pointer;text-align:left}
 #dBody button.pri{background:var(--ice);color:#04102e;border-color:transparent}
 #dBody button.danger{background:#5a0d14;border-color:var(--crit);color:#ffd0d4}

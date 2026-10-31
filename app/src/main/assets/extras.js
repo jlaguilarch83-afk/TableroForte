@@ -599,18 +599,16 @@ const I = {
   voz: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   viaje: '<path d="M4 19h16M6 15l4-6 4 3 4-7"/>'
 };
+// solo lo que se usa manejando; lo que se prende o apaga está en el menú de tres puntitos
 const BOTONES = [
   ['evento', 'Foto', () => F.pruveeoFoto && F.pruveeoFoto()],
-  ['carros', 'Carros', () => { if (F.cfg.deteccion) { F.det.off(); ui.toast('Detección de carros apagada'); pintar(); } else { ui.toast('Activando la detección…'); F.det.on().then(pintar); } }],
   ['gas', 'Gasolina', () => F.nav ? (F.nav.activo() ? F.nav.parar(true) : F.nav.gas()) : irGasolinera()],
   ['tope', 'Tope', () => F.marcarTope('tope')],
   ['bache', 'Bache', () => F.marcarTope('bache')],
   ['carro', 'Mi carro', () => ui.open('estacionado')],
-  ['ubic', 'Ubicación', mandarUbicacion],
-  ['radar', 'Radares', () => { F.cfg.radares = F.cfg.radares === false; F.save(); ui.toast(F.cfg.radares ? 'Aviso de radares activado' : 'Aviso de radares apagado'); pintar(); }],
-  ['voz', 'Voz', () => $('btnVoz').click()],
-  ['viaje', 'Viaje', () => ui.open('viaje')]
+  ['voz', 'Voz', () => $('btnVoz').click()]
 ];
+F.mandarUbicacion = mandarUbicacion;
 const dock = document.createElement('nav');
 dock.id = 'dock'; dock.setAttribute('aria-label', 'Accesos rápidos');
 dock.innerHTML = BOTONES.map(([id, l]) => `<button type="button" data-b="${id}"><svg viewBox="0 0 24 24">${I[id]}</svg><span>${l}</span></button>`).join('');
@@ -629,7 +627,7 @@ css.textContent = `
 body[data-skin="tesla"] #dock{display:flex}
 body[data-skin="tesla"] #stage{bottom:calc(58px + env(safe-area-inset-bottom,0px))}
 body[data-skin="tesla"] #btnTope,body[data-skin="tesla"] #btnVoz{display:none}
-#dock button{flex:1;max-width:96px;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;border-radius:12px;background:transparent;color:#cfd6e2;cursor:pointer;padding:4px 2px}
+#dock button{flex:1;max-width:140px;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;border-radius:12px;background:transparent;color:#cfd6e2;cursor:pointer;padding:4px 2px}
 #dock svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 #dock span{font-size:11px;font-weight:600;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 #dock button:active{background:rgba(255,255,255,.08)}

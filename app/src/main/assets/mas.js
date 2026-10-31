@@ -11,7 +11,7 @@ const cool = {};
 const cada = (id, s) => { const t = Date.now(); if (cool[id] && t - cool[id] < s * 1000) return false; cool[id] = t; return true; };
 
 // valores de fábrica de lo nuevo
-const DEF = { carril: 'off', peatones: 'off', semaforo: false, ralenti: true, batSiempre: true, arrancones: false,
+const DEF = { radares: true, sonidosUI: true, carril: 'off', peatones: 'off', semaforo: false, ralenti: true, batSiempre: true, arrancones: false,
   motor: false, motorEstilo: 'mustang', motorVol: .7, choque: false, contacto: null, climaFx: true, climaAdelante: true };
 for (const k in DEF) if (F.cfg[k] === undefined) F.cfg[k] = DEF[k];
 
@@ -422,37 +422,44 @@ const popEl = document.createElement('div'); popEl.id = 'masPop'; popEl.hidden =
 document.body.appendChild(popEl);
 const seg = (k, ops) => `<div class="seg" data-k="${k}">${ops.map(([v, l]) => `<button type="button" data-v="${v}" class="${F.cfg[k] === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 const sw = (k, l, sub) => `<label class="sw"><span>${l}${sub ? `<small>${sub}</small>` : ''}</span><input type="checkbox" data-k="${k}"${F.cfg[k] ? ' checked' : ''}><i></i></label>`;
+let tabMas = (() => { try { return localStorage.getItem('forte-tab-mas') || 'camara'; } catch (e) { return 'camara'; } })();
 const pop = {
   pintar() {
     if (popEl.hidden) return;
     const c = F.cfg, tol = c.tolerancia ?? 5, ct = c.contacto, sc = popEl.scrollTop;
-    popEl.innerHTML = `<div class="ph"><b>Opciones</b><button type="button" class="px" aria-label="Cerrar">✕</button></div>
-<h4>Cámara Pruveeo (Wi-Fi)</h4>
+    const G = {
+camara: `<h4>Dashcam Pruveeo (Wi-Fi)</h4>
 ${sw('pruveeo', 'Conectar la Pruveeo', 'Conecta el teléfono al Wi-Fi de la cámara (MUSTANG, clave 12345678)')}
 <div class="row"><span>Estado</span><b class="ctc pvEst">${esc(F.pruveeo.motivo())}</b></div>
 <div class="step" style="justify-content:flex-start"><button type="button" data-a="pvWifi">Wi-Fi</button><button type="button" data-a="pvVer">Ver en vivo</button><button type="button" data-a="pvProbar">Probar conexión</button></div>
 ${F.pruveeo.diag() ? `<p class="hint" style="color:#cfd7e4">${esc(F.pruveeo.diag())}</p>` : ''}
-<p class="hint">Todos los avisos de cámara usan la Pruveeo. Si Android dice que esa red no tiene internet, elige "Mantener conexión"; mapas y clima siguen con tus datos móviles.</p>
-<h4>Avisos con la cámara</h4>
+<p class="hint">Si Android dice que esa red no tiene internet, elige "Mantener conexión"; mapas y clima siguen con tus datos móviles.</p>
+<h4>Lo que ve la cámara</h4>
+${sw('deteccion', 'Carros alrededor', 'Los dibuja en el camino y avisa si vas muy pegado')}
+${sw('placas', 'Foto al carro de enfrente', 'Guarda su foto, placa, color y tipo; sale un recuadro chiquito')}
+<button type="button" class="mini" data-a="placasVer">Ver fotos de placas${F.placasCuenta ? ` (${F.placasCuenta()})` : ''}</button>`,
+avisos: `<h4>Camino</h4>
 <div class="row"><span>Salida de carril</span>${seg('carril', [['off', 'Apagado'], ['pitido', 'Pitido'], ['voz', 'Voz']])}</div>
 ${c.carril !== 'off' ? `<button type="button" class="mini" data-a="calibrar">Calibrar centro del carril</button><p class="hint">Avisa arriba de 45 km/h. Como no puedo leer la direccional, al cambiarte de carril también suena.</p>` : ''}
 <div class="row"><span>Peatones y ciclistas</span>${seg('peatones', [['off', 'Apagado'], ['pitido', 'Pitido'], ['voz', 'Voz']])}</div>
 ${sw('semaforo', 'Semáforo (rojo: para · verde: avanza)', 'Es una ayuda: de noche o con el sol de frente puede fallar')}
-<h4>Placas</h4>
-${sw('placas', 'Foto al carro de enfrente', 'Guarda su foto, placa, color y tipo; sale un recuadro chiquito')}
-<button type="button" class="mini" data-a="placasVer">Ver fotos de placas${F.placasCuenta ? ` (${F.placasCuenta()})` : ''}</button>
-<h4>Límite de velocidad</h4>
+${sw('radares', 'Radares de velocidad')}
 <div class="row"><span>Tolerancia arriba del límite</span><div class="step"><button type="button" data-a="tol-">−</button><b>+${tol} km/h</b><button type="button" data-a="tol+">+</button></div></div>
 <h4>Motor y batería</h4>
 ${sw('ralenti', 'Detector de ralentí raro', 'Con el motor caliente y el carro detenido')}
 ${sw('batSiempre', 'Decir la prueba de batería cada arranque', 'Si lo apagas, solo habla cuando algo va mal')}
-<h4>Diversión</h4>
+<h4>Clima</h4>
+${sw('climaFx', 'Lluvia o nieve en la pantalla', 'Solo cuando de verdad está lloviendo donde vas')}
+${sw('climaAdelante', 'Avisar si viene lluvia o granizo adelante')}
+<div class="row"><span>Ver cómo se ve</span><div class="step"><button type="button" data-a="fx-lluvia">Lluvia</button><button type="button" data-a="fx-tormenta">Tormenta</button><button type="button" data-a="fx-nieve">Nieve</button><button type="button" data-a="fx-granizo">Granizo</button></div></div>`,
+diversion: `<h4>Diversión</h4>
 ${sw('arrancones', 'Modo arrancones', 'Agrega el botón Arrancón abajo')}
 ${sw('motor', 'Sonido de motor')}
 ${c.motor ? `<div class="est">${ESTILOS.map(e => `<button type="button" data-est="${e.id}" class="${c.motorEstilo === e.id ? 'on' : ''}">${e.n}</button>`).join('')}</div>
 <div class="row"><span>Volumen</span><input type="range" min="0.1" max="1" step="0.05" value="${c.motorVol}" data-a="vol"></div>
 <p class="hint">Los sonidos se generan con tus revoluciones reales; no son grabaciones de esos carros.</p>` : ''}
-<h4>Seguridad</h4>
+${sw('sonidosUI', 'Sonidos suaves de los botones')}`,
+seguridad: `<h4>Choque</h4>
 ${sw('choque', 'Detector de choque', 'Golpe fuerte + el carro se detiene: cuenta de 30 s')}
 <div class="row"><span>Avisar a</span><b class="ctc">${ct ? esc(ct.nombre || ct.tel) + (ct.nombre ? ` <small>${esc(ct.tel)}</small>` : '') : 'Nadie todavía'}</b></div>
 ${window.OBD && OBD.pickContact ? '<button type="button" class="mini" data-a="contacto">Elegir contacto</button>'
@@ -464,11 +471,16 @@ ${sw('cansancio', 'Avisar si cierro los ojos', 'Alarma y voz si cierras los ojos
 ${c.cansancio ? `<div class="row"><span>Estado</span><b class="ctc ojEst">${esc(F.ojos ? F.ojos.estado() : '')}</b></div>
 <div class="row"><span>Avisar a</span><b class="ctc">${c.contactoCansancio ? esc(c.contactoCansancio.nombre || c.contactoCansancio.tel) : ct ? esc(ct.nombre || ct.tel) + ' <small>(el del choque)</small>' : 'Nadie todavía'}</b></div>
 <div class="step" style="justify-content:flex-start">${window.OBD && OBD.pickContact ? '<button type="button" data-a="contactoCansancio">Elegir contacto</button>' : ''}<button type="button" data-a="probarOjos">Probar alarma</button></div>
-<p class="hint">Le llega un SMS automático con la hora, la velocidad y tu ubicación. La foto por WhatsApp se abre lista cuando el carro se detiene (WhatsApp siempre pide tocar Enviar). La cara se ve con la cámara de adentro de la Pruveeo: en "Ver en vivo" usa "Cambiar vista" hasta que salgan las dos juntas.</p>` : ''}
-<h4>Clima</h4>
-${sw('climaFx', 'Lluvia o nieve en la pantalla', 'Solo cuando de verdad está lloviendo donde vas')}
-${sw('climaAdelante', 'Avisar si viene lluvia o granizo adelante')}
-<div class="row"><span>Ver cómo se ve</span><div class="step"><button type="button" data-a="fx-lluvia">Lluvia</button><button type="button" data-a="fx-tormenta">Tormenta</button><button type="button" data-a="fx-nieve">Nieve</button><button type="button" data-a="fx-granizo">Granizo</button></div></div>`;
+<p class="hint">Le llega un SMS automático con la hora, la velocidad y tu ubicación. La foto por WhatsApp se abre lista cuando el carro se detiene. La cara se ve con la cámara de adentro de la Pruveeo.</p>` : ''}
+<h4>Ubicación</h4>
+<button type="button" class="mini" data-a="ubic">Mandar mi ubicación por WhatsApp</button>`
+    };
+    const TABS = [['camara', 'Cámara'], ['avisos', 'Avisos'], ['diversion', 'Diversión'], ['seguridad', 'Seguridad']];
+    if (!G[tabMas]) tabMas = 'camara';
+    popEl.innerHTML = `<div class="ph"><b>Opciones</b><button type="button" class="px" aria-label="Cerrar">✕</button></div>
+<div class="tabs" role="tablist">${TABS.map(([id, l]) => `<button type="button" role="tab" data-tab="${id}" aria-selected="${id === tabMas}" class="${id === tabMas ? 'on' : ''}">${l}</button>`).join('')}</div>
+<div class="grp">${G[tabMas]}</div>`;
+    popEl.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tabMas = b.dataset.tab; try { localStorage.setItem('forte-tab-mas', tabMas); } catch (e) {} popEl.scrollTop = 0; pop.pintar(); });
     popEl.querySelector('.px').onclick = pop.cerrar;
     popEl.querySelectorAll('.seg button').forEach(b => b.onclick = () => cambiar(b.parentNode.dataset.k, b.dataset.v));
     popEl.querySelectorAll('.sw input').forEach(i => i.onchange = () => cambiar(i.dataset.k, i.checked));
@@ -497,6 +509,7 @@ function cambiar(k, v) {
     F.pruveeoDock && F.pruveeoDock();
   }
   if (k === 'placas') F.visionAplicar && F.visionAplicar();
+  if (k === 'deteccion') { v ? F.det.on() : F.det.off(); }
   if (k === 'cansancio') { F.ojosAplicar && F.ojosAplicar(); if (v && window.OBD && OBD.askSms) OBD.askSms(); }
   if (k === 'choque' && v) {
     if (window.OBD && OBD.askSms) OBD.askSms();
@@ -510,6 +523,7 @@ function accion(a) {
   if (a === 'pvWifi') { if (window.OBD && OBD.wifiAjustes) OBD.wifiAjustes(); else ui.toast('Abre los ajustes de Wi-Fi del teléfono'); return; }
   if (a === 'pvVer') { pop.cerrar(); F.pruveeo.ver(); return; }
   if (a === 'pvProbar') { F.pruveeo.probar(); return; }
+  if (a === 'ubic') { F.mandarUbicacion && F.mandarUbicacion(); return; }
   if (a === 'placasVer') { pop.cerrar(); F.placasVer && F.placasVer(); return; }
   if (a === 'calibrar') { ui.toast(F.carrilCalibrar && F.carrilCalibrar() ? 'Listo: este es el centro de tu carril' : 'Todavía no veo las líneas del carril'); return; }
   if (a === 'contacto') { contactoPara = 'contacto'; OBD.pickContact(); return; }
@@ -531,6 +545,9 @@ body[data-skin="tesla"] #btnMas{display:grid}
   border:1px solid rgba(255,255,255,.1);border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.55);padding:12px 14px 16px;font-size:14px;-webkit-overflow-scrolling:touch}
 #masPop .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 #masPop .ph b{font-size:16px}
+#masPop .tabs{position:sticky;top:-12px;z-index:2;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:6px -4px 4px;padding:6px 4px;background:rgba(12,17,27,.97)}
+#masPop .tabs button{border:0;border-radius:10px;padding:8px 2px;background:rgba(255,255,255,.06);color:#cfd7e4;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+#masPop .tabs button.on{background:#2f6bff;color:#fff}
 #masPop .px{border:0;background:rgba(255,255,255,.08);color:#fff;width:32px;height:32px;border-radius:10px;cursor:pointer}
 #masPop h4{margin:14px 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8ea0bb}
 #masPop .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0;min-height:36px}

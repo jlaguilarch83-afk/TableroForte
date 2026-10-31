@@ -101,7 +101,7 @@ F.pruveeoDock = function () {
     d.insertBefore(b, d.firstChild);
   }
   const b = d.querySelector('[data-b="pruveeo"]');
-  b.style.display = F.cfg.pruveeo ? '' : 'none';
+  b.style.display = 'none';   // el video en vivo se abre desde el menú de tres puntitos
   b.classList.toggle('on', F.pruveeo.listo());
 };
 setInterval(F.pruveeoDock, 1000); F.pruveeoDock();

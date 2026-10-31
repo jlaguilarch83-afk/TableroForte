@@ -290,3 +290,15 @@ F.on('teslaCamino', c => {
 });
 setTimeout(() => { if (F.app && camQuiere()) F.visionAplicar(); }, 3500);
 })();
+/* clic suave al tocar botones (se apaga en ⋮ › Diversión) */
+(function () {
+  const F = window.F;
+  document.addEventListener('pointerdown', e => {
+    if (F.cfg.sonidosUI === false || !e.target.closest('button,[role="tab"],label.sw')) return;
+    const ac = F.audio && F.audio(); if (!ac) return;
+    const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(1900, t); o.frequency.exponentialRampToValueAtTime(900, t + .035);
+    g.gain.setValueAtTime(.06, t); g.gain.exponentialRampToValueAtTime(.0005, t + .05);
+    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + .06);
+  }, { passive: true });
+})();

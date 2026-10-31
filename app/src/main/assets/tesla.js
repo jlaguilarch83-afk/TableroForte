@@ -13,6 +13,11 @@ let carOk = false;
 car.onload = () => { carOk = true; };
 car.src = 'car_rear.webp';
 // vista 360° (24 cuadros del video del dron)
+// tu Forte de lado (foto), para cuando está estacionado
+const lado = new Image();
+let ladoOk = false, ladoMix = 0;
+lado.onload = () => { ladoOk = true; };
+lado.src = 'forte_lado.webp';
 const giro = new Image();
 let giroOk = false;
 giro.onload = () => { giroOk = true; };
@@ -236,7 +241,24 @@ function auto(c, V) {
   c.fillStyle = sg; c.beginPath(); c.ellipse(800, 606, 200, 26, 0, 0, Math.PI * 2); c.fill(); c.restore();
   quieto = V.speed < 1 ? quieto + (F.dt || .016) : 0;
   giroMix = 0;   // vista 360 desactivada a petición
-  if (carOk && giroMix < .99) { c.save(); c.globalAlpha = (.25 + .75 * ease) * (1 - giroMix); c.drawImage(car, x, y, W, H); c.restore(); }
+  // estacionado: tu Forte de lado; al avanzar, de atrás en el camino
+  ladoMix += ((ladoOk && quieto > 1.2 ? 1 : 0) - ladoMix) * Math.min(1, (F.dt || .016) * 3);
+  if (carOk && ladoMix < .99) { c.save(); c.globalAlpha = (.25 + .75 * ease) * (1 - ladoMix); c.drawImage(car, x, y + ladoMix * 40, W, H); c.restore(); }
+  if (ladoMix > .01) {
+    const LW = 560, LH = LW * lado.naturalHeight / lado.naturalWidth, lx = 800 - LW / 2, piso = 612, ly = piso - LH + (1 - ladoMix) * 30;
+    c.save(); c.globalAlpha = ladoMix;
+    // sombra de contacto
+    const sg = c.createRadialGradient(800, piso - 6, 10, 800, piso - 6, LW * .55);
+    sg.addColorStop(0, `rgba(0,0,0,${.45 + nightMix * .2})`); sg.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = sg; c.beginPath(); c.ellipse(800, piso - 6, LW * .55, 20, 0, 0, Math.PI * 2); c.fill();
+    // reflejo en el piso (más fuerte de noche, como piso mojado)
+    c.save(); c.globalAlpha = ladoMix * (.1 + nightMix * .16); c.translate(0, piso * 2 - 8); c.scale(1, -1); c.drawImage(lado, lx, ly, LW, LH); c.restore();
+    if (nightMix > .3) c.filter = `brightness(${1 - nightMix * .22}) contrast(1.06)`;
+    c.drawImage(lado, lx, ly, LW, LH);
+    c.filter = 'none';
+    K.txt(c, 'Estacionado', 800, ly - 12, 16, P.mute, 'center', 700);
+    c.restore();
+  }
   if (giroMix > .01) {
     const f = Math.floor(F.t / .16) % 24, sx = (f % 6) * 320, sy = Math.floor(f / 6) * 240, GW = 470, GH = GW * .75;
     c.save(); c.globalAlpha = giroMix; c.drawImage(giro, sx, sy, 320, 240, 800 - GW / 2, 618 - GH, GW, GH); c.restore();
@@ -246,7 +268,7 @@ function auto(c, V) {
   // luces: freno, noche y destello de bienvenida
   const flash = p < 1 && Math.floor(p * 6) % 2 === 0 ? 1 : 0;
   const k = Math.max(brake, nightMix * .35, flash * .9);
-  if (k > .02 && carOk && giroMix < .5) {
+  if (k > .02 && carOk && giroMix < .5 && ladoMix < .5) {
     c.save(); c.globalCompositeOperation = 'lighter';
     const glow = (u, v, r, a) => {
       const gx = x + u * W, gy = y + v * H, g = c.createRadialGradient(gx, gy, 0, gx, gy, r);
