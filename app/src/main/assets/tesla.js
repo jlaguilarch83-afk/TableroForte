@@ -116,38 +116,93 @@ function camino(c, V) {
   c.globalAlpha = 1;
 }
 
-// los otros carros: la misma foto de atrás, aclarada como en los tableros Tesla
-let fantasma = null, fantasmaRojo = null;
-function hacerFantasmas() {
-  const mk = (col, a) => {
-    const o = document.createElement('canvas'); o.width = car.naturalWidth; o.height = car.naturalHeight;
-    const g = o.getContext('2d'); g.drawImage(car, 0, 0);
-    g.fillStyle = '#3a3f47'; g.fillRect(o.width * .404, o.height * .38, o.width * .19, o.height * .12);   // sin placa
-    g.fillStyle = '#3a3f47'; g.fillRect(o.width * .404, o.height * .38, o.width * .19, o.height * .12);   // sin placa
-    g.globalCompositeOperation = 'source-atop'; g.globalAlpha = a; g.fillStyle = col; g.fillRect(0, 0, o.width, o.height);
-    return o;
-  };
-  fantasma = mk('#f2f4f7', .62); fantasmaRojo = mk('#ff2a3b', .55);
+// los otros vehículos al estilo Tesla: siluetas blancas lisas (de atrás o de lado)
+function colores(o, cerca) {
+  if (cerca) return ['#ff5a5a', '#c73636', '#7a1d1d'];
+  if (o.parado) return nightMix > .5 ? ['#8d96a3', '#6c7480', '#3a4049'] : ['#b6bdc7', '#949ca8', '#5f6670'];
+  return nightMix > .5 ? ['#f4f6f9', '#c9d0da', '#5b6472'] : ['#ffffff', '#d9dee6', '#7c8592'];
+}
+// de atrás: carrocería, medallón (vidrio) y techo; x,y = centro abajo; w = ancho en px
+function vehAtras(c, x, y, w, cls, col) {
+  const [cuerpo, sombra, vidrio] = col;
+  const alto = cls === 'truck' ? w * 1.05 : cls === 'bus' ? w * 1.2 : w * .78;
+  const g = c.createLinearGradient(0, y - alto, 0, y);
+  g.addColorStop(0, cuerpo); g.addColorStop(1, sombra);
+  c.fillStyle = vidrio;
+  K.rr(c, x - w * .46, y - w * .1, w * .17, w * .1, w * .03); c.fill();   // llantas
+  K.rr(c, x + w * .29, y - w * .1, w * .17, w * .1, w * .03); c.fill();
+  if (cls === 'truck' || cls === 'bus') {
+    K.rr(c, x - w / 2, y - alto, w, alto * .93, w * .08); c.fillStyle = g; c.fill();
+    if (cls === 'bus') { K.rr(c, x - w * .4, y - alto * .9, w * .8, alto * .28, w * .05); c.fillStyle = vidrio; c.globalAlpha *= .6; c.fill(); c.globalAlpha /= .6; }
+    else { c.strokeStyle = sombra; c.lineWidth = Math.max(1, w * .015); c.beginPath(); c.moveTo(x, y - alto * .95); c.lineTo(x, y - alto * .12); c.stroke(); }
+    return alto;
+  }
+  // cuerpo bajo
+  K.rr(c, x - w / 2, y - alto * .58, w, alto * .5, w * .12); c.fillStyle = g; c.fill();
+  // cabina
+  c.beginPath();
+  c.moveTo(x - w * .44, y - alto * .56); c.lineTo(x - w * .33, y - alto); c.lineTo(x + w * .33, y - alto); c.lineTo(x + w * .44, y - alto * .56); c.closePath();
+  c.fillStyle = cuerpo; c.fill();
+  c.beginPath();
+  c.moveTo(x - w * .38, y - alto * .6); c.lineTo(x - w * .3, y - alto * .92); c.lineTo(x + w * .3, y - alto * .92); c.lineTo(x + w * .38, y - alto * .6); c.closePath();
+  c.fillStyle = vidrio; c.globalAlpha *= .55; c.fill(); c.globalAlpha /= .55;
+  if (cls === 'motorcycle') return alto;
+  // calaveras discretas
+  c.fillStyle = 'rgba(255,60,60,.55)';
+  K.rr(c, x - w * .47, y - alto * .5, w * .2, w * .045, w * .02); c.fill();
+  K.rr(c, x + w * .27, y - alto * .5, w * .2, w * .045, w * .02); c.fill();
+  return alto;
+}
+// de lado (cruzando): perfil con cofre, parabrisas, techo y cajuela; dir 1 = va a la derecha
+function vehLado(c, x, y, L, cls, dir, col) {
+  const [cuerpo, sombra, vidrio] = col, d = dir < 0 ? -1 : 1, X = u => x + d * u * L, H = L * .3;
+  const r = L * .095;
+  c.fillStyle = vidrio;
+  for (const u of [-.3, .3]) { c.beginPath(); c.arc(X(u), y - r, r, 0, Math.PI * 2); c.fill(); }
+  const g = c.createLinearGradient(0, y - H, 0, y); g.addColorStop(0, cuerpo); g.addColorStop(1, sombra);
+  c.fillStyle = g; c.beginPath();
+  if (cls === 'truck' || cls === 'bus') {
+    const T = cls === 'bus' ? L * .36 : L * .42;
+    if (cls === 'bus') { K.rr(c, x - L / 2, y - T - r * .4, L, T, L * .04); c.fill(); c.fillStyle = vidrio; c.globalAlpha *= .55; K.rr(c, x - L * .44, y - T * .95, L * .88, T * .3, L * .02); c.fill(); c.globalAlpha /= .55; return T; }
+    K.rr(c, X(-.5) - (d < 0 ? L * .7 : 0), y - T - r * .4, L * .7, T, L * .03); c.fill();   // caja
+    c.beginPath(); c.moveTo(X(.22), y - r * .4); c.lineTo(X(.22), y - T * .8); c.lineTo(X(.4), y - T * .8); c.lineTo(X(.5), y - T * .45); c.lineTo(X(.5), y - r * .4); c.closePath(); c.fill();
+    return T;
+  }
+  c.moveTo(X(-.5), y - r * .5);
+  c.lineTo(X(-.5), y - H * .62);                 // atrás
+  c.quadraticCurveTo(X(-.46), y - H * .72, X(-.36), y - H * .74);
+  c.lineTo(X(-.22), y - H);                      // medallón
+  c.lineTo(X(.1), y - H);                        // techo
+  c.lineTo(X(.27), y - H * .7);                  // parabrisas
+  c.lineTo(X(.46), y - H * .62);                 // cofre
+  c.quadraticCurveTo(X(.5), y - H * .58, X(.5), y - H * .4);
+  c.lineTo(X(.5), y - r * .5); c.closePath(); c.fill();
+  c.beginPath(); c.moveTo(X(-.19), y - H * .93); c.lineTo(X(.08), y - H * .93); c.lineTo(X(.22), y - H * .72); c.lineTo(X(-.3), y - H * .72); c.closePath();
+  c.fillStyle = vidrio; c.globalAlpha *= .55; c.fill(); c.globalAlpha /= .55;
+  return H;
 }
 function vehiculos(c) {
   if (!F.cfg.deteccion) return;
   const L = (F.objs || []).filter(o => o.cls === 'car' || o.cls === 'truck' || o.cls === 'bus' || o.cls === 'motorcycle');
-  if (carOk && !fantasma) hacerFantasmas();
   for (const o of L.slice().sort((a, b) => b.dist - a.dist)) {
     if (o.dist > 80) continue;
     const d = Math.max(o.dist, 6), s = 600 / (d + 5.4);   // los muy cercanos se dibujan justo adelante del tuyo
-    // carril: el de enfrente o los de los lados, dentro del camino dibujado
-    const lat = clamp((o.cx - .5) * 1.4 * d, -2.6, 2.6);
+    const lat = clamp(o.lat != null ? o.lat : (o.cx - .5) * 1.4 * d, o.lado ? -9 : -5.5, o.lado ? 9 : 5.5);
     const bx = px(lat, d), by = py(d);
-    const ancho = o.cls === 'car' ? 1.8 : o.cls === 'motorcycle' ? .75 : 2.4;
-    const w = ancho * s * 1.15, h = fantasma ? w * car.naturalHeight / car.naturalWidth * (o.cls === 'truck' || o.cls === 'bus' ? 1.25 : 1) : w * .7;
-    const cerca = F.frontDist != null && Math.abs(o.dist - F.frontDist) < .5 && V0.speed > 15 && o.dist / (V0.speed / 3.6) < 1.5;
+    const cerca = F.frontDist != null && !o.lado && Math.abs(o.dist - F.frontDist) < .5 && V0.speed > 15 && o.dist / (V0.speed / 3.6) < 1.5;
+    const col = colores(o, cerca);
     c.save(); c.globalAlpha = clamp(1.5 - d / 60, .35, 1);
-    // sombra
-    c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(bx, by, w * .55, w * .07, 0, 0, Math.PI * 2); c.fill();
-    if (fantasma) c.drawImage(cerca ? fantasmaRojo : fantasma, bx - w / 2, by - h, w, h);
-    else { K.rr(c, bx - w / 2, by - h, w, h, 6); c.fillStyle = cerca ? '#e5352b' : '#e8ebf0'; c.fill(); }
-    if (d < 40) K.txt(c, `${Math.round(o.dist)} m`, bx, by - h - 12, 14, cerca ? '#e5352b' : P.mute, 'center', 700);
+    let alto;
+    if (o.lado) {
+      const largo = (o.cls === 'bus' ? 11 : o.cls === 'truck' ? 8 : 4.5) * s;
+      c.fillStyle = 'rgba(0,0,0,.2)'; c.beginPath(); c.ellipse(bx, by, largo * .55, largo * .05, 0, 0, Math.PI * 2); c.fill();
+      alto = vehLado(c, bx, by, largo, o.cls, o.dir || 1, col);
+    } else {
+      const ancho = (o.cls === 'car' ? 1.8 : o.cls === 'motorcycle' ? .75 : 2.5) * s * 1.1;
+      c.fillStyle = 'rgba(0,0,0,.2)'; c.beginPath(); c.ellipse(bx, by, ancho * .58, ancho * .08, 0, 0, Math.PI * 2); c.fill();
+      alto = vehAtras(c, bx, by, ancho, o.cls, col);
+    }
+    if (d < 40) K.txt(c, o.parado ? `Parado · ${Math.round(o.dist)} m` : `${Math.round(o.dist)} m`, bx, by - alto - 12, 14, cerca ? '#e5352b' : P.mute, 'center', 700);
     c.restore();
   }
 }

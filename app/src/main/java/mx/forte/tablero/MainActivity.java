@@ -658,6 +658,49 @@ public class MainActivity extends Activity implements ObdService.Listener {
             }).start();
         }
 
+        /** Guarda una foto (JPEG en base64) en Imágenes/TableroForte y regresa su dirección. */
+        @JavascriptInterface
+        public String guardarFoto(String b64, String nombre) {
+            try {
+                byte[] data = Base64.decode(b64, Base64.DEFAULT);
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.Images.Media.DISPLAY_NAME, nombre);
+                v.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                if (Build.VERSION.SDK_INT >= 29) v.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/TableroForte");
+                Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                if (uri == null) return "";
+                try (OutputStream o = getContentResolver().openOutputStream(uri)) {
+                    if (o != null) o.write(data);
+                }
+                return uri.toString();
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        /** Abre WhatsApp en el chat de ese número con la foto y el texto listos (falta tocar Enviar). */
+        @JavascriptInterface
+        public void whatsappFoto(final String tel, final String texto, final String uri) {
+            runOnUiThread(() -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("image/jpeg");
+                i.putExtra(Intent.EXTRA_STREAM, Uri.parse(uri));
+                i.putExtra(Intent.EXTRA_TEXT, texto);
+                i.putExtra("jid", tel + "@s.whatsapp.net");
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                i.setPackage("com.whatsapp");
+                try {
+                    startActivity(i);
+                } catch (ActivityNotFoundException e) {
+                    i.setPackage(null);
+                    try {
+                        startActivity(Intent.createChooser(i, "Mandar aviso").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    } catch (Exception ignored) {
+                    }
+                }
+            });
+        }
+
         /** Abre los ajustes de Wi-Fi del teléfono. */
         @JavascriptInterface
         public void wifiAjustes() {

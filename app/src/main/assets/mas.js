@@ -279,9 +279,10 @@ function choqueMandar() {
   else window.open(`https://wa.me/${telIntl(c.tel)}?text=${encodeURIComponent(txt)}`, '_blank', 'noopener');
   F.alert('choque', sms ? `Mensaje enviado a ${c.nombre || c.tel}` : `Abriendo WhatsApp para ${c.nombre || c.tel}`, 'crit', sms ? 'Mandé tu ubicación por mensaje' : true);
 }
+let contactoPara = 'contacto';
 window.forteDash.contact = (nombre, tel) => {
   if (!tel) { ui.toast('No se eligió contacto'); return; }
-  F.cfg.contacto = { nombre: nombre || '', tel }; F.save(); pop.pintar(); ui.toast(`Contacto: ${nombre || tel}`);
+  F.cfg[contactoPara] = { nombre: nombre || '', tel }; F.save(); pop.pintar(); ui.toast(`Contacto: ${nombre || tel}`);
 };
 window.forteDash.smsPermiso = ok => { if (!ok) ui.toast('Sin permiso de SMS solo podré abrir WhatsApp'); };
 
@@ -456,6 +457,13 @@ ${window.OBD && OBD.pickContact ? '<button type="button" class="mini" data-a="co
   : '<div class="row"><input type="tel" placeholder="Teléfono" data-a="telManual" value="' + esc(ct ? ct.tel : '') + '"><button type="button" class="mini" data-a="telOk">Guardar</button></div>'}
 <button type="button" class="mini" data-a="probarChoque">Probar (no manda nada)</button>
 <p class="hint">Si no respondes, manda un SMS automático con tu ubicación y abre WhatsApp con el mensaje listo.</p>
+<h4>Cansancio (ojos cerrados)</h4>
+${sw('cansancio', 'Avisar si cierro los ojos', 'Alarma y voz si cierras los ojos 1.5 s arriba de 10 km/h')}
+${c.cansancio ? `<div class="row"><span>Ver mi cara con</span>${seg('ojosFuente', [['pruveeo', 'Pruveeo adentro'], ['tel', 'Teléfono']])}</div>
+<div class="row"><span>Estado</span><b class="ctc ojEst">${esc(F.ojos ? F.ojos.estado() : '')}</b></div>
+<div class="row"><span>Avisar a</span><b class="ctc">${c.contactoCansancio ? esc(c.contactoCansancio.nombre || c.contactoCansancio.tel) : ct ? esc(ct.nombre || ct.tel) + ' <small>(el del choque)</small>' : 'Nadie todavía'}</b></div>
+<div class="step" style="justify-content:flex-start">${window.OBD && OBD.pickContact ? '<button type="button" data-a="contactoCansancio">Elegir contacto</button>' : ''}<button type="button" data-a="probarOjos">Probar alarma</button></div>
+<p class="hint">Le llega un SMS automático con la hora, la velocidad y tu ubicación. La foto por WhatsApp se abre lista cuando el carro se detiene (WhatsApp siempre pide tocar Enviar). ${c.ojosFuente === 'pruveeo' ? 'En la Pruveeo usa "Cambiar vista" hasta que se vea la cámara de adentro (o las dos juntas).' : 'Con la cámara frontal, los avisos de carros y carril deben usar la Pruveeo.'}</p>` : ''}
 <h4>Clima</h4>
 ${sw('climaFx', 'Lluvia o nieve en la pantalla', 'Solo cuando de verdad está lloviendo donde vas')}
 ${sw('climaAdelante', 'Avisar si viene lluvia o granizo adelante')}
@@ -488,6 +496,7 @@ function cambiar(k, v) {
     F.pruveeoDock && F.pruveeoDock();
   }
   if (k === 'fuenteCam') F.visionAplicar && F.visionAplicar();
+  if (k === 'cansancio' || k === 'ojosFuente') { if (k === 'ojosFuente' && F.ojosAplicar) { F.cfg.cansancio = false; F.ojosAplicar(); F.cfg.cansancio = true; } F.ojosAplicar && F.ojosAplicar(); if (v && window.OBD && OBD.askSms) OBD.askSms(); }
   if (k === 'choque' && v) {
     if (window.OBD && OBD.askSms) OBD.askSms();
     if (!F.cfg.contacto) ui.toast('Ahora elige a quién avisar');
@@ -501,7 +510,9 @@ function accion(a) {
   if (a === 'pvVer') { pop.cerrar(); F.pruveeo.ver(); return; }
   if (a === 'pvProbar') { F.pruveeo.probar(); return; }
   if (a === 'calibrar') { ui.toast(F.carrilCalibrar && F.carrilCalibrar() ? 'Listo: este es el centro de tu carril' : 'Todavía no veo las líneas del carril'); return; }
-  if (a === 'contacto') { OBD.pickContact(); return; }
+  if (a === 'contacto') { contactoPara = 'contacto'; OBD.pickContact(); return; }
+  if (a === 'contactoCansancio') { contactoPara = 'contactoCansancio'; OBD.pickContact(); return; }
+  if (a === 'probarOjos') { pop.cerrar(); F.ojosProbar && F.ojosProbar(); return; }
   if (a === 'telOk') { const t = popEl.querySelector('[data-a="telManual"]').value.trim(); if (t.replace(/\D/g, '').length >= 8) { c.contacto = { nombre: '', tel: t }; F.save(); ui.toast('Contacto guardado'); } else ui.toast('Escribe un teléfono válido'); pop.pintar(); return; }
   if (a === 'probarChoque') { pop.cerrar(); choqueAlerta(true); return; }
   if (a.startsWith('fx-')) { pop.cerrar(); F.climaProbar(a.slice(3)); return; }
@@ -580,3 +591,5 @@ document.head.appendChild(css);
 // al abrir con algo ya activado
 setTimeout(() => { if (F.cfg.motor) F.motorAplicar(); }, 1500);
 })();
+// estado de los ojos en el menú, al momento
+setInterval(() => { const e = document.querySelector('#masPop .ojEst'); if (e && F.ojos) e.textContent = F.ojos.estado(); }, 700);

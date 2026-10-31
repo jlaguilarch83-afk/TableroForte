@@ -178,7 +178,8 @@ F.on('det', r => {
       // persona arriba de una bici = ciclista
       const enBici = d.class === 'person' && bicis.some(b => Math.abs((b.bbox[0] + b.bbox[2] / 2) / vw - cxx) < .06);
       const alto = d.class === 'bicycle' ? 1.05 : 1.7;
-      return { tipo: d.class === 'bicycle' || enBici ? 'ciclista' : 'peaton', cx: cxx, dist: alto * focal / Math.max(8, h), bajo: (y + h) / vh };
+      const dd = alto * focal / Math.max(8, h);
+      return { tipo: d.class === 'bicycle' || enBici ? 'ciclista' : 'peaton', cx: cxx, dist: dd, lat: (cxx - .5) * vw / focal * dd, bajo: (y + h) / vh };
     }).filter((g, i, A) => !(g.tipo === 'ciclista' && A.some((o, j) => j < i && o.tipo === 'ciclista' && Math.abs(o.cx - g.cx) < .06)));
     const zona = Math.max(14, vel / 3.6 * 3);   // 3 segundos adelante
     const peligro = F.gente.filter(g => Math.abs(g.cx - .5) < .17 && g.dist < zona).sort((a, b) => a.dist - b.dist)[0];
@@ -243,17 +244,30 @@ function colorLuz(ctx, b) {
 }
 
 /* ================= dibujo en Forte Tesla ================= */
+// figuras al estilo Tesla: persona blanca y lisa (cabeza, cuerpo, piernas); s = estatura en px
 function figura(c, x, y, s, tipo, col) {
-  c.save(); c.strokeStyle = col; c.fillStyle = col; c.lineWidth = Math.max(2, s * .09); c.lineCap = 'round'; c.lineJoin = 'round';
+  const noche = F.tesla ? F.tesla.night() > .5 : false;
+  const [cuerpo, sombra] = col === 'peligro' ? ['#ff5a5a', '#c73636'] : noche ? ['#f4f6f9', '#c3cad4'] : ['#ffffff', '#cfd5de'];
+  const g = c.createLinearGradient(0, y - s, 0, y); g.addColorStop(0, cuerpo); g.addColorStop(1, sombra);
+  c.save(); c.fillStyle = g; c.strokeStyle = g; c.lineCap = 'round'; c.lineJoin = 'round';
   if (tipo === 'ciclista') {
-    const r = s * .26;
-    c.beginPath(); c.arc(x - s * .32, y - r, r, 0, Math.PI * 2); c.arc(x + s * .32, y - r, r, 0, Math.PI * 2); c.stroke();
-    c.beginPath(); c.moveTo(x - s * .32, y - r); c.lineTo(x - s * .05, y - s * .62); c.lineTo(x + s * .32, y - r); c.moveTo(x - s * .05, y - s * .62); c.lineTo(x + s * .12, y - s * .95); c.stroke();
-    c.beginPath(); c.arc(x + s * .12, y - s * 1.16, s * .11, 0, Math.PI * 2); c.fill();
+    const r = s * .2, ya = y - r;
+    c.lineWidth = Math.max(1.5, s * .045); c.strokeStyle = noche ? '#9aa3ae' : '#7c8592';
+    c.beginPath(); c.arc(x - s * .3, ya, r, 0, Math.PI * 2); c.arc(x + s * .3, ya, r, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.moveTo(x - s * .3, ya); c.lineTo(x - s * .05, y - s * .5); c.lineTo(x + s * .3, ya); c.stroke();
+    c.lineWidth = Math.max(3, s * .11); c.strokeStyle = g;
+    c.beginPath(); c.moveTo(x - s * .02, y - s * .52); c.lineTo(x + s * .1, y - s * .82); c.stroke();       // torso
+    c.beginPath(); c.moveTo(x + s * .08, y - s * .76); c.lineTo(x + s * .27, y - s * .6); c.stroke();        // brazo
+    c.beginPath(); c.moveTo(x - s * .02, y - s * .52); c.lineTo(x + s * .05, y - s * .3); c.stroke();        // pierna
+    c.beginPath(); c.arc(x + s * .13, y - s * .95, s * .09, 0, Math.PI * 2); c.fill();
   } else {
-    c.beginPath(); c.arc(x, y - s * 1.45, s * .14, 0, Math.PI * 2); c.fill();
-    c.beginPath(); c.moveTo(x, y - s * 1.28); c.lineTo(x, y - s * .65); c.moveTo(x, y - s * .65); c.lineTo(x - s * .22, y); c.moveTo(x, y - s * .65); c.lineTo(x + s * .22, y);
-    c.moveTo(x - s * .28, y - s * 1.0); c.lineTo(x, y - s * 1.15); c.lineTo(x + s * .28, y - s * .95); c.stroke();
+    const t = s * .17;   // grosor
+    c.lineWidth = t * .8;
+    c.beginPath(); c.moveTo(x - t * .45, y - s * .47); c.lineTo(x - t * .6, y - t * .4); c.moveTo(x + t * .45, y - s * .47); c.lineTo(x + t * .6, y - t * .4); c.stroke();   // piernas
+    K.rr(c, x - t * .9, y - s * .82, t * 1.8, s * .4, t * .7); c.fill();                                        // torso
+    c.lineWidth = t * .55;
+    c.beginPath(); c.moveTo(x - t * .95, y - s * .76); c.lineTo(x - t * 1.15, y - s * .5); c.moveTo(x + t * .95, y - s * .76); c.lineTo(x + t * 1.15, y - s * .5); c.stroke();   // brazos
+    c.beginPath(); c.arc(x, y - s * .91, t * .62, 0, Math.PI * 2); c.fill();                                  // cabeza
   }
   c.restore();
 }
@@ -262,12 +276,12 @@ F.on('teslaCamino', c => {
   // peatones y ciclistas en el camino
   for (const g of (F.gente || []).slice().sort((a, b) => b.dist - a.dist)) {
     if (g.dist > 60) continue;
-    const d = Math.max(g.dist, 6), s = 600 / (d + 5.4), lat = clamp((g.cx - .5) * 1.4 * d, -4.2, 4.2);
-    const x = T.px(lat, d), y = T.py(d), col = g.peligro ? '#ff2a3b' : '#ffb21a';
+    const d = Math.max(g.dist, 6), s = 600 / (d + 5.4), lat = clamp(g.lat != null ? g.lat : (g.cx - .5) * 1.4 * d, -5.5, 5.5);
+    const x = T.px(lat, d), y = T.py(d), col = g.peligro ? 'peligro' : 'normal';
     c.save(); c.globalAlpha = clamp(1.5 - d / 50, .4, 1);
     c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(x, y, s * .4, s * .07, 0, 0, Math.PI * 2); c.fill();
-    figura(c, x, y, clamp(s * 1.05, 16, 110), g.tipo, col);
-    if (d < 35) K.txt(c, `${Math.round(g.dist)} m`, x, y + 14, 13, col, 'center', 700);
+    figura(c, x, y, clamp(s * 1.75, 22, 170), g.tipo, col);
+    if (d < 35) K.txt(c, `${Math.round(g.dist)} m`, x, y + 14, 13, g.peligro ? '#e5352b' : T.P.mute, 'center', 700);
     c.restore();
   }
   // semáforo que ve la cámara

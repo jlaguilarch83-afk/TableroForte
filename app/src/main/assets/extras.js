@@ -364,6 +364,40 @@ ui.addPanel('voz', 'Comandos de voz', () => {
 F.objs = []; F.frontDist = null;
 let modelo = null, detectando = false, cargando = false;
 const ANCHO = { car: 1.8, truck: 2.5, bus: 2.5, motorcycle: .8, bicycle: .6, person: .5 };
+const ALTO = { car: 1.5, truck: 3.0, bus: 3.1, motorcycle: 1.35, bicycle: 1.05, person: 1.7 };
+/* Seguimiento cuadro a cuadro: con eso se sabe si un carro está parado (te acercas a él
+   a tu misma velocidad) o si cruza enfrente (se mueve de lado), y las posiciones no brincan. */
+let pistas = [], pistaId = 1;
+function seguir(L) {
+  const ahora = performance.now(), vms = (F.S.speed || 0) / 3.6, usadas = new Set();
+  for (const o of L.sort((a, b) => a.dist - b.dist)) {
+    let mejor = null, err = 1e9;
+    for (const t of pistas) {
+      if (usadas.has(t) || (t.cls === 'person') !== (o.cls === 'person')) continue;
+      const e = Math.abs(t.cx - o.cx) / .12 + Math.abs(t.dist - o.dist) / Math.max(4, t.dist * .35);
+      if (e < 2 && e < err) { err = e; mejor = t; }
+    }
+    if (mejor) {
+      const t = mejor, dt = Math.max(.05, (ahora - t.t) / 1000);
+      const acerca = (t.dist - o.dist) / dt, lateral = (o.cx - t.cx) / dt;
+      t.acerca += (acerca - t.acerca) * .3; t.vx += (lateral - t.vx) * .35;
+      t.dist += (o.dist - t.dist) * .45; t.cx += (o.cx - t.cx) * .5; t.lat += (o.lat - t.lat) * .45;
+      t.lado = t.ladoN > 0 ? o.lado || t.ladoN > 2 : o.lado; t.ladoN = o.lado ? Math.min(6, t.ladoN + 1) : Math.max(0, t.ladoN - 1);
+      t.cls = o.cls; t.w = o.w; t.h = o.h; t.t = ahora; t.n++;
+      // parado: te le acercas casi a la misma velocidad a la que vas
+      const suVel = vms - t.acerca;
+      const quieto = vms > 4 && Math.abs(suVel) < 2.5 && !(t.lado && Math.abs(t.vx) > .05);
+      t.paradoN = quieto ? Math.min(8, t.paradoN + 1) : Math.max(0, t.paradoN - 2);
+      usadas.add(t);
+    } else {
+      const t = Object.assign({ id: pistaId++, t: ahora, n: 1, acerca: vms, vx: 0, paradoN: 0, ladoN: o.lado ? 1 : 0 }, o);
+      pistas.push(t); usadas.add(t);
+    }
+  }
+  pistas = pistas.filter(t => ahora - t.t < 900);
+  return pistas.filter(t => usadas.has(t)).map(t => ({ id: t.id, cls: t.cls, cx: t.cx, w: t.w, h: t.h, dist: t.dist, lat: t.lat,
+    lado: t.lado, dir: t.vx > .02 ? 1 : t.vx < -.02 ? -1 : 0, parado: t.paradoN >= 3 }));
+}
 function cargarScript(src) {
   return new Promise((ok, mal) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => mal(new Error('no cargó ' + src)); document.head.appendChild(s); });
 }
@@ -412,10 +446,17 @@ async function ciclo() {
       const det = await modelo.detect(lienzo, 20, .35);
       if (!detectando) return;
       F.emit('det', { det, lienzo, lctx, vw, vh, focal });
-      F.objs = det.filter(d => ANCHO[d.class] && d.score >= .4).map(d => {
-        const [x, y, w, h] = d.bbox;
-        return { cls: d.class, cx: (x + w / 2) / vw, w: w / vw, h: h / vh, dist: ANCHO[d.class] * focal / Math.max(8, w) };
+      const crudos = det.filter(d => ANCHO[d.class] && d.score >= .4).map(d => {
+        const [x, y, w, h] = d.bbox, cls = d.class;
+        // de lado (cruzando): la caja es mucho más ancha que alta
+        const lado = (cls === 'car' || cls === 'truck' || cls === 'bus') && w / Math.max(1, h) > 2.0;
+        // distancia: por la altura (sirve de frente y de lado) y por el ancho si se ve de atrás
+        const dAlto = (ALTO[cls] || 1.5) * focal / Math.max(6, h), dAncho = ANCHO[cls] * focal / Math.max(8, w);
+        const dist = lado || cls === 'person' ? dAlto : (dAlto + dAncho) / 2;
+        const cx = (x + w / 2) / vw;
+        return { cls, cx, w: w / vw, h: h / vh, dist, lado, lat: (cx - .5) * vw / focal * dist };
       });
+      F.objs = seguir(crudos);
       const frente = F.objs.filter(o => Math.abs(o.cx - .5) < .16 && o.cls !== 'person' && o.cls !== 'bicycle').sort((a, b) => a.dist - b.dist)[0];
       F.frontDist = frente ? frente.dist : null;
       F.detStatus = { estado: 'activa', n: F.objs.filter(o => o.cls !== 'person' && o.cls !== 'bicycle').length, t: Date.now() };
