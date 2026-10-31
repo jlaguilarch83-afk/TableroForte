@@ -431,6 +431,13 @@ const pop = {
 ${c.carril !== 'off' ? `<button type="button" class="mini" data-a="calibrar">Calibrar centro del carril</button><p class="hint">Avisa arriba de 45 km/h. Como no puedo leer la direccional, al cambiarte de carril también suena.</p>` : ''}
 <div class="row"><span>Peatones y ciclistas</span>${seg('peatones', [['off', 'Apagado'], ['pitido', 'Pitido'], ['voz', 'Voz']])}</div>
 ${sw('semaforo', 'Semáforo (rojo: para · verde: avanza)', 'Es una ayuda: de noche o con el sol de frente puede fallar')}
+<h4>Cámara Pruveeo (Wi-Fi)</h4>
+${sw('pruveeo', 'Conectar la Pruveeo', 'Conecta el teléfono al Wi-Fi de la cámara (MUSTANG, clave 12345678)')}
+${c.pruveeo ? `<div class="row"><span>Los avisos de la cámara usan</span>${seg('fuenteCam', [['tel', 'Teléfono'], ['pruveeo', 'Pruveeo']])}</div>
+<div class="row"><span>Estado</span><b class="ctc pvEst">${esc(F.pruveeo.motivo())}</b></div>
+<div class="step" style="justify-content:flex-start"><button type="button" data-a="pvWifi">Wi-Fi</button><button type="button" data-a="pvVer">Ver en vivo</button><button type="button" data-a="pvProbar">Probar conexión</button></div>
+${F.pruveeo.diag() ? `<p class="hint" style="color:#cfd7e4">${esc(F.pruveeo.diag())}</p>` : ''}
+<p class="hint">Si Android dice que esa red no tiene internet, elige "Mantener conexión". Mapas y clima siguen con tus datos móviles. La Pruveeo sigue grabando normal.</p>` : ''}
 <h4>Límite de velocidad</h4>
 <div class="row"><span>Tolerancia arriba del límite</span><div class="step"><button type="button" data-a="tol-">−</button><b>+${tol} km/h</b><button type="button" data-a="tol+">+</button></div></div>
 <h4>Motor y batería</h4>
@@ -475,6 +482,12 @@ function cambiar(k, v) {
   if (['carril', 'peatones', 'semaforo'].includes(k)) F.visionAplicar && F.visionAplicar();
   if (k === 'motor') { F.audio(); F.motorAplicar(); }
   if (k === 'arrancones') dock();
+  if (k === 'pruveeo') {
+    if (v) { F.pruveeo.conectar(); ui.toast('Conectando con la Pruveeo…'); }
+    else { F.pruveeo.parar(); if (F.cfg.fuenteCam === 'pruveeo') { F.cfg.fuenteCam = 'tel'; F.save(); F.visionAplicar && F.visionAplicar(); } }
+    F.pruveeoDock && F.pruveeoDock();
+  }
+  if (k === 'fuenteCam') F.visionAplicar && F.visionAplicar();
   if (k === 'choque' && v) {
     if (window.OBD && OBD.askSms) OBD.askSms();
     if (!F.cfg.contacto) ui.toast('Ahora elige a quién avisar');
@@ -484,6 +497,9 @@ function cambiar(k, v) {
 function accion(a) {
   const c = F.cfg;
   if (a === 'tol-' || a === 'tol+') { c.tolerancia = clamp((c.tolerancia ?? 5) + (a === 'tol+' ? 1 : -1), 0, 20); F.save(); F.emit('tolerancia'); pop.pintar(); return; }
+  if (a === 'pvWifi') { if (window.OBD && OBD.wifiAjustes) OBD.wifiAjustes(); else ui.toast('Abre los ajustes de Wi-Fi del teléfono'); return; }
+  if (a === 'pvVer') { pop.cerrar(); F.pruveeo.ver(); return; }
+  if (a === 'pvProbar') { F.pruveeo.probar(); return; }
   if (a === 'calibrar') { ui.toast(F.carrilCalibrar && F.carrilCalibrar() ? 'Listo: este es el centro de tu carril' : 'Todavía no veo las líneas del carril'); return; }
   if (a === 'contacto') { OBD.pickContact(); return; }
   if (a === 'telOk') { const t = popEl.querySelector('[data-a="telManual"]').value.trim(); if (t.replace(/\D/g, '').length >= 8) { c.contacto = { nombre: '', tel: t }; F.save(); ui.toast('Contacto guardado'); } else ui.toast('Escribe un teléfono válido'); pop.pintar(); return; }

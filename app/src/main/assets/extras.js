@@ -373,8 +373,10 @@ async function iniciarDeteccion() {
   if (detectando || cargando) return;
   cargando = true;
   try {
-    if (!ui.cam.stream) await ui.camStart();
-    if (!ui.cam.stream) throw new Error('sin cámara');
+    if (F.cfg.fuenteCam !== 'pruveeo') {
+      if (!ui.cam.stream) await ui.camStart();
+      if (!ui.cam.stream) throw new Error('sin cámara');
+    }
     if (!window.cocoSsd) {
       await cargarScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js');
       await cargarScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
@@ -400,15 +402,13 @@ const lienzo = document.createElement('canvas'), lctx = lienzo.getContext('2d', 
 F.detStatus = { estado: 'apagada', n: 0 };
 async function ciclo() {
   if (!detectando) return;
-  const v = $('camVid');
-  if (ui.cam.stream && v.paused) v.play().catch(() => {});
-  if (!ui.cam.stream) F.detStatus = { estado: 'sin cámara', n: 0 };
-  else if (!v.videoWidth) F.detStatus = { estado: 'esperando imagen', n: 0 };
-  if (ui.cam.stream && v.videoWidth) {
+  const src = F.camFuente ? F.camFuente() : { motivo: 'sin cámara' };
+  if (!src.el) F.detStatus = { estado: src.motivo, n: 0 };
+  else {
     try {
-      const vw = 640, vh = Math.round(640 * v.videoHeight / v.videoWidth), focal = vw * .714;
+      const vw = 640, vh = Math.round(640 * src.h / src.w), focal = vw * (src.focal || .714);
       if (lienzo.width !== vw || lienzo.height !== vh) { lienzo.width = vw; lienzo.height = vh; }
-      lctx.drawImage(v, 0, 0, vw, vh);
+      lctx.drawImage(src.el, 0, 0, vw, vh);
       const det = await modelo.detect(lienzo, 20, .35);
       if (!detectando) return;
       F.emit('det', { det, lienzo, lctx, vw, vh, focal });

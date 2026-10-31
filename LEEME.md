@@ -24,6 +24,12 @@ App Android que muestra el tablero digital y lee tu Kia Forte 2020 con el adapta
 3. Toca el botón de arriba a la izquierda, elige tu OBDII. La próxima vez se conecta solo.
 4. Pestaña **Fallas** › Leer fallas para ver códigos del check engine.
 
+## Novedades 3.4 · dashcam Pruveeo por Wi-Fi
+- En el menú ⋮ › **Cámara Pruveeo**: prende "Conectar la Pruveeo" y conecta el teléfono al Wi-Fi de la cámara (MUSTANG, clave 12345678). Si Android dice "sin internet", elige "Mantener conexión".
+- Botón **Pruveeo** en la barra: video en vivo en pantalla completa ("Cambiar vista" para adelante/adentro).
+- "Los avisos de la cámara usan: Pruveeo" → carros, carril, peatones y semáforo salen de la dashcam y el teléfono ya no necesita su cámara.
+- "Probar conexión" dice qué contesta la cámara (para ajustar si algo no sale).
+
 ## Novedades 3.3 · menú de tres puntitos (⋮) en Forte Tesla
 - **Salida de carril:** la cámara ve las líneas, las dibuja en el camino y avisa (pitido del lado de la línea, o voz) arriba de 45 km/h. "Calibrar centro del carril" con el auto bien centrado.
 - **Peatones y ciclistas** al frente: pitido o voz.
