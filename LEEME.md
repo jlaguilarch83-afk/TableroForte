@@ -24,6 +24,15 @@ App Android que muestra el tablero digital y lee tu Kia Forte 2020 con el adapta
 3. Toca el botón de arriba a la izquierda, elige tu OBDII. La próxima vez se conecta solo.
 4. Pestaña **Fallas** › Leer fallas para ver códigos del check engine.
 
+## Novedades 3.8 · el camino de verdad
+- Forte Tesla dibuja la calle con el mapa: curvas, subidas y bajadas, carriles reales y los de sentido contrario (línea amarilla), calles que salen, semáforos, pasos peatonales, altos, ceda el paso y topes.
+- Letrero de curva cerrada con la velocidad recomendada (y voz si vas rápido).
+- Ruta a la gasolinera pintada en azul sobre el camino.
+- Cielo real: día, atardecer, noche con estrellas y nubes según el clima.
+- Con la Pruveeo: letreros de ALTO y conos naranjas (aproximado) dibujados en el camino.
+- ≡ › Viajes › **Repetir viaje**: tu recorrido animado en el mapa, pintado por velocidad.
+- Se apagan en ⋮ › Avisos: "Camino real del mapa" y "Cielo real".
+
 ## Novedades 3.7
 - Fotos de tu Forte recortadas (de frente y de lado), con sombra y reflejo en el piso.
 - Diseños nuevos en "Con tu Forte": **Inicio Forte** (claro de día, oscuro de noche) y **Neón Forte** (paneles azules; tu Forte de lado estacionado y de atrás en un camino neón al avanzar).

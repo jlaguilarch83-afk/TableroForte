@@ -439,6 +439,7 @@ ${sw('deteccion', 'Carros alrededor', 'Los dibuja en el camino y avisa si vas mu
 ${sw('placas', 'Foto al carro de enfrente', 'Guarda su foto, placa, color y tipo; sale un recuadro chiquito')}
 <button type="button" class="mini" data-a="placasVer">Ver fotos de placas${F.placasCuenta ? ` (${F.placasCuenta()})` : ''}</button>`,
 avisos: `<h4>Camino</h4>
+${sw('caminoReal', 'Camino real del mapa', 'Curvas, subidas, carriles, cruces, semáforos, altos y topes en Forte Tesla')}
 <div class="row"><span>Salida de carril</span>${seg('carril', [['off', 'Apagado'], ['pitido', 'Pitido'], ['voz', 'Voz']])}</div>
 ${c.carril !== 'off' ? `<button type="button" class="mini" data-a="calibrar">Calibrar centro del carril</button><p class="hint">Avisa arriba de 45 km/h. Como no puedo leer la direccional, al cambiarte de carril también suena.</p>` : ''}
 <div class="row"><span>Peatones y ciclistas</span>${seg('peatones', [['off', 'Apagado'], ['pitido', 'Pitido'], ['voz', 'Voz']])}</div>
@@ -450,6 +451,7 @@ ${sw('ralenti', 'Detector de ralentí raro', 'Con el motor caliente y el carro d
 ${sw('batSiempre', 'Decir la prueba de batería cada arranque', 'Si lo apagas, solo habla cuando algo va mal')}
 <h4>Clima</h4>
 ${sw('climaFx', 'Lluvia o nieve en la pantalla', 'Solo cuando de verdad está lloviendo donde vas')}
+${sw('cieloReal', 'Cielo real', 'Amanecer, atardecer, noche con estrellas y nubes')}
 ${sw('climaAdelante', 'Avisar si viene lluvia o granizo adelante')}
 <div class="row"><span>Ver cómo se ve</span><div class="step"><button type="button" data-a="fx-lluvia">Lluvia</button><button type="button" data-a="fx-tormenta">Tormenta</button><button type="button" data-a="fx-nieve">Nieve</button><button type="button" data-a="fx-granizo">Granizo</button></div></div>`,
 diversion: `<h4>Diversión</h4>

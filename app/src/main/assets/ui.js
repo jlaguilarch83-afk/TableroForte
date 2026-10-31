@@ -104,7 +104,7 @@ function render() {
   if (!seccion) {
     // agrupado: lo que se consulta y se ajusta (lo que se prende o apaga está en el menú de tres puntitos)
     const GRUPOS = [['Mi carro', ['conexion', 'bateria', 'fallas', 'salud', 'aceite', 'estacionado']],
-      ['Viajes', ['viaje', 'ultimo', 'mapa', 'resumen', 'gasolina', 'gasolineras', 'navgas', 'herramientas']],
+      ['Viajes', ['viaje', 'ultimo', 'repeticion', 'mapa', 'resumen', 'gasolina', 'gasolineras', 'navgas', 'herramientas']],
       ['Cámara y calle', ['placas', 'deteccion', 'topes', 'limites']],
       ['Pantalla y ajustes', ['disenos', 'musica', 'clima', 'voz', 'alertas', 'ajustes']]];
     const usados = new Set(GRUPOS.flatMap(g => g[1]));

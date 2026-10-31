@@ -182,6 +182,11 @@ F.on('det', r => {
     }
   } else F.gente = [];
 
+  // ---- letreros de alto que ve la cámara ----
+  F.senalesCam = det.filter(d => d.class === 'stop sign' && d.score > .45).map(d => {
+    const [x, y, w, h] = d.bbox, cxx = (x + w / 2) / vw, dd = .75 * focal / Math.max(6, w);
+    return { tipo: 'alto', dist: dd, lat: (cxx - .5) * vw / focal * dd, t: performance.now() };
+  });
   // ---- semáforo ----
   if (F.cfg.semaforo) {
     const L = det.filter(d => d.class === 'traffic light' && d.score > .35).map(d => {
@@ -288,6 +293,62 @@ F.on('teslaCamino', c => {
     c.restore();
   }
 });
+/* ================= conos naranjas (obras) ================= */
+// Busca manchas naranjas, más altas que anchas, sobre el piso. Es aproximado.
+const kc = document.createElement('canvas'); kc.width = 160; kc.height = 90;
+const kx = kc.getContext('2d', { willReadFrequently: true });
+F.conos = []; let conosVeces = 0;
+setInterval(() => {
+  if (!F.cfg.deteccion) { F.conos = []; return; }
+  const src = F.camFuente(); if (!src.el) { F.conos = []; return; }
+  const W = 160, H = 90, y0 = 46;
+  kx.drawImage(src.el, 0, 0, W, H);
+  const d = kx.getImageData(0, 0, W, H).data, m = new Uint8Array(W * H);
+  for (let y = y0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4, R = d[i] / 255, G = d[i + 1] / 255, B = d[i + 2] / 255, mx = Math.max(R, G, B), mn = Math.min(R, G, B);
+    if (mx < .45 || mx === mn || (mx - mn) / mx < .55 || mx !== R) continue;
+    const h = 60 * ((G - B) / (mx - mn)); if (h >= 6 && h <= 30) m[y * W + x] = 1;
+  }
+  const L = [], pila = [];
+  for (let p0 = 0; p0 < W * H; p0++) {
+    if (m[p0] !== 1) continue;
+    let x0 = W, x1 = 0, ya = H, yb = 0, n = 0; pila.push(p0); m[p0] = 2;
+    while (pila.length) {
+      const p = pila.pop(), x = p % W, y = (p / W) | 0; n++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < ya) ya = y; if (y > yb) yb = y;
+      for (const q of [p - 1, p + 1, p - W, p + W]) if (q >= 0 && q < W * H && m[q] === 1 && Math.abs((q % W) - x) <= 1) { m[q] = 2; pila.push(q); }
+    }
+    const w = x1 - x0 + 1, h = yb - ya + 1;
+    if (n < 4 || n > 260 || h < w * .9 || h > w * 4 || n < w * h * .35) continue;
+    const yf = (yb + 1) / H; if (yf < .56) continue;
+    const focal = W * (src.focal || .3), dd = clamp(1.3 * focal / ((yf - .5) * H), 3, 60), cx = (x0 + x1 + 1) / 2 / W;
+    L.push({ dist: dd, lat: (cx - .5) * W / focal * dd });
+  }
+  conosVeces = L.length ? conosVeces + 1 : 0;
+  F.conos = conosVeces >= 2 ? L.slice(0, 12) : [];
+  if (F.conos.length >= 2 && cada('conos', 90)) F.alert('conos', 'Conos u obras adelante', 'warn', 'Obras adelante');
+}, 450);
+F.on('teslaCamino', c => {
+  const T = F.tesla; if (!T) return;
+  for (const o of (F.conos || []).slice().sort((a, b) => b.dist - a.dist)) {
+    const d = Math.max(o.dist, 5), s = 600 / (d + 5.4), x = T.px(clamp(o.lat, -6, 6), d), y = T.py(d), h = clamp(s * .75, 8, 70), w = h * .62;
+    c.save();
+    c.fillStyle = '#ff7a1a'; c.beginPath(); c.moveTo(x - w / 2, y); c.lineTo(x - w * .12, y - h); c.lineTo(x + w * .12, y - h); c.lineTo(x + w / 2, y); c.closePath(); c.fill();
+    c.fillStyle = '#ffffff'; c.beginPath(); c.moveTo(x - w * .33, y - h * .38); c.lineTo(x - w * .24, y - h * .6); c.lineTo(x + w * .24, y - h * .6); c.lineTo(x + w * .33, y - h * .38); c.closePath(); c.fill();
+    c.fillStyle = '#3a3a3a'; c.fillRect(x - w * .62, y - h * .06, w * 1.24, h * .08);
+    c.restore();
+  }
+  for (const o of (F.senalesCam || [])) {
+    if (performance.now() - o.t > 2500 || o.dist > 70) continue;
+    const d = Math.max(o.dist, 6), s = 600 / (d + 5.4), x = T.px(clamp(o.lat, -7, 7), d), y = T.py(d), r = clamp(s * .45, 8, 40);
+    c.save(); c.strokeStyle = '#555'; c.lineWidth = Math.max(2, r * .15); c.beginPath(); c.moveTo(x, y); c.lineTo(x, y - r * 3); c.stroke();
+    c.beginPath(); for (let i = 0; i < 8; i++) { const a = Math.PI / 8 + i * Math.PI / 4; c.lineTo(x + Math.cos(a) * r, y - r * 3.4 + Math.sin(a) * r); }
+    c.closePath(); c.fillStyle = '#d4202a'; c.fill(); c.strokeStyle = '#fff'; c.lineWidth = Math.max(1, r * .1); c.stroke();
+    if (r > 12) K.txt(c, 'ALTO', x, y - r * 3.4, r * .55, '#fff', 'center', 800);
+    c.restore();
+  }
+});
+
 setTimeout(() => { if (F.app && camQuiere()) F.visionAplicar(); }, 3500);
 })();
 /* clic suave al tocar botones (se apaga en ⋮ › Diversión) */

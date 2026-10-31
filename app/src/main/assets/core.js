@@ -195,10 +195,11 @@ let ultRuta = 0;
 function agregarRuta() {
   const g = F.gps; if (!g || g.sim) return;
   const r = F.trip.ruta, now = Date.now();
-  if (now - ultRuta < 5000) return;
+  if (now - ultRuta < 3000) return;
   const last = r[r.length - 1];
-  if (last && Math.abs(last[0] - g.lat) < 0.0002 && Math.abs(last[1] - g.lon) < 0.0002) return;
-  ultRuta = now; r.push([+g.lat.toFixed(5), +g.lon.toFixed(5)]);
+  if (last && Math.abs(last[0] - g.lat) < 0.00012 && Math.abs(last[1] - g.lon) < 0.00012) return;
+  // [lat, lon, km/h, segundos desde que empezó el viaje] (para la repetición)
+  ultRuta = now; r.push([+g.lat.toFixed(5), +g.lon.toFixed(5), Math.round(F.S.speed || g.speed || 0), Math.round((now - F.trip.inicio) / 1000)]);
   if (r.length > 4000) r.splice(0, r.length - 4000);
 }
 const WCODE = c => c === 0 ? 'Despejado' : c <= 3 ? 'Parcialmente nublado' : c <= 48 ? 'Niebla' : c <= 57 ? 'Llovizna' :

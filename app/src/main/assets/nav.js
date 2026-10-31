@@ -125,7 +125,7 @@ function parar(manual) {
   N = null; $('navBox').hidden = true;
   if (manual) { descartado = true; ui.toast('Guía a la gasolinera terminada'); }
 }
-F.nav = { gas: () => { descartado = false; saltadas.clear(); iniciar(); }, parar, activo: () => !!N };
+F.nav = { gas: () => { descartado = false; saltadas.clear(); iniciar(); }, parar, activo: () => !!N, coords: () => N ? N.coords : null };
 $('navX').onclick = () => parar(true);
 
 // distancia de un punto a la ruta, en metros

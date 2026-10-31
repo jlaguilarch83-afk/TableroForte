@@ -61,11 +61,37 @@ function marcha(V) {
 
 // proyección del camino: d = metros hacia adelante, L = metros a los lados
 const HZ = 150;
-const py = d => HZ + 2600 / (d + 5.4);
+// con el mapa, el camino sube o baja según la elevación (metros arriba o abajo a esa distancia)
+const py = d => HZ + (2600 - (F.caminoActivo && F.caminoActivo() ? F.caminoAltura(d) : 0) * 600) / (d + 5.4);
 const px = (L, d) => 800 + L * 600 / (d + 5.4);
 const ORILLA = 3.0;
 
+function faros(c) {
+  if (nightMix <= .02) return;
+  c.save(); c.globalAlpha = nightMix * .85; c.globalCompositeOperation = 'lighter';
+  for (const s of [-1, 1]) {
+    c.beginPath();
+    c.moveTo(px(s * .7, 5), py(5)); c.lineTo(px(s * 3.2, 45), py(45)); c.lineTo(px(s * .2, 45), py(45)); c.lineTo(px(s * .25, 5), py(5)); c.closePath();
+    const hg = c.createLinearGradient(0, py(5), 0, py(45));
+    hg.addColorStop(0, 'rgba(255,240,200,.55)'); hg.addColorStop(1, 'rgba(255,240,200,0)');
+    c.fillStyle = hg; c.fill();
+  }
+  c.restore();
+}
 function camino(c, V) {
+  // la calle de verdad, con el mapa (curvas, carriles, cruces); si no hay datos, el camino recto de siempre
+  if (F.cfg.caminoReal !== false && F.dibujarCamino && F.caminoActivo()) {
+    // la calle se dibuja solo en el centro, para no tapar los datos de los lados
+    c.save(); c.beginPath(); c.moveTo(330, 640); c.lineTo(560, 112); c.lineTo(1040, 112); c.lineTo(1270, 640); c.closePath(); c.clip();
+    const ctx = { px, py, P, nightMix, dist };
+    const ok = F.dibujarCamino(c, ctx);
+    c.restore();
+    if (ok) {
+      faros(c);
+      if (ctx.etiqueta) K.txt(c, ctx.etiqueta, 800, 132, 15, P.mute, 'center', 700);
+      return;
+    }
+  }
   // asfalto
   c.beginPath();
   c.moveTo(px(-ORILLA - .2, 0), py(0)); c.lineTo(px(-ORILLA - .2, 140), py(140)); c.lineTo(px(ORILLA + .2, 140), py(140)); c.lineTo(px(ORILLA + .2, 0), py(0)); c.closePath();
@@ -310,6 +336,7 @@ const def = {
     const g = c.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, P.bg0); g.addColorStop(1, P.bg1);
     c.fillStyle = g; c.fillRect(0, 0, w, h);
+    if (F.dibujarCielo) F.dibujarCielo(c, w, h, { night: nightMix, sport: sportMix });
   },
   draw(c, V) {
     V0 = V;

@@ -135,6 +135,7 @@ function viajeTerminado() {
     vmax: Math.round(T.vmax), score: F.scoreVal(), coolMax: extra.coolMax, voltMin: extra.voltMin, eventos: F.score.eventos.length };
   const L = store('forte-viajes') || []; L.push(v); if (L.length > 300) L.splice(0, L.length - 300); store('forte-viajes', L);
   store('forte-ultimo', v);
+  if (T.ruta && T.ruta.length > 3) store('forte-ultimo-ruta', { t: v.t, km: v.km, seg: v.seg, ruta: T.ruta.slice(-4000) });
   F.speak(`Viaje terminado. ${v.km.toFixed(1)} kilómetros. Calificación ${v.score} de 100.`);
   F.resetTrip(); extra = { coolMax: null, voltMin: null };
   ui.open('ultimo');
