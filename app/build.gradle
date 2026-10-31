@@ -10,8 +10,8 @@ android {
         applicationId 'mx.forte.tablero'
         minSdk 26
         targetSdk 34
-        versionCode 13
-        versionName '3.3'
+        versionCode 14
+        versionName '3.4'
     }
 
     // Llave fija: así cada versión nueva se instala encima de la anterior
@@ -42,4 +42,7 @@ android {
 dependencies {
     // comunicación con el reloj (Wear OS)
     implementation 'com.google.android.gms:play-services-wearable:18.1.0'
+    // video en vivo de la dashcam por RTSP
+    implementation 'androidx.media3:media3-exoplayer:1.4.1'
+    implementation 'androidx.media3:media3-exoplayer-rtsp:1.4.1'
 }

@@ -68,6 +68,7 @@ public class MainActivity extends Activity implements ObdService.Listener {
     private String[] pendingSms = null;
 
     private WebView web;
+    private Dashcam dashcam;
     private BluetoothAdapter adapter;
 
     private TextToSpeech tts;
@@ -146,6 +147,13 @@ public class MainActivity extends Activity implements ObdService.Listener {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
                 if (!HOST.equals(u.getHost())) return null;
+                if ("/pruveeo/cuadro.jpg".equals(u.getPath())) {
+                    byte[] f = dashcam != null ? dashcam.cuadro : null;
+                    if (f == null) return new WebResourceResponse("text/plain", "UTF-8", 404, "Sin video", null, null);
+                    Map<String, String> h = new HashMap<>();
+                    h.put("Cache-Control", "no-store");
+                    return new WebResourceResponse("image/jpeg", null, 200, "OK", h, new java.io.ByteArrayInputStream(f));
+                }
                 String path = u.getPath() == null || u.getPath().equals("/") ? "index.html" : u.getPath().substring(1);
                 try {
                     InputStream in = getAssets().open(path);
@@ -172,7 +180,11 @@ public class MainActivity extends Activity implements ObdService.Listener {
                 });
             }
         });
-        setContentView(web);
+        android.widget.FrameLayout raiz = new android.widget.FrameLayout(this);
+        raiz.setBackgroundColor(0xFF02040A);
+        raiz.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        setContentView(raiz);
+        dashcam = new Dashcam(this, raiz);
 
         BluetoothManager bm = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
         adapter = bm != null ? bm.getAdapter() : null;
@@ -288,6 +300,7 @@ public class MainActivity extends Activity implements ObdService.Listener {
         ObdService.listeners.remove(this);
         com.google.android.gms.wearable.Wearable.getMessageClient(this).removeListener(relojListener);
         stopGps();
+        if (dashcam != null) dashcam.parar();
         if (tts != null) tts.shutdown();
         super.onDestroy();
     }
@@ -606,6 +619,51 @@ public class MainActivity extends Activity implements ObdService.Listener {
             runOnUiThread(() -> {
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (Exception ignored) {
+                }
+            });
+        }
+
+        // ---- dashcam Pruveeo por Wi-Fi ----
+        @JavascriptInterface
+        public void camConectar() {
+            dashcam.iniciar();
+        }
+
+        @JavascriptInterface
+        public void camParar() {
+            dashcam.parar();
+        }
+
+        @JavascriptInterface
+        public String camEstado() {
+            return dashcam.json();
+        }
+
+        /** Diagnóstico en segundo plano; contesta en forteDash.camProbado(json). */
+        @JavascriptInterface
+        public void camProbar() {
+            new Thread(() -> {
+                String r = dashcam.probar();
+                js("window.forteDash&&forteDash.camProbado&&forteDash.camProbado(" + r + ")");
+            }).start();
+        }
+
+        /** Comando Novatek; contesta en forteDash.camRespuesta(cmd, texto). */
+        @JavascriptInterface
+        public void camCmd(final int cmd, final String par) {
+            new Thread(() -> {
+                String r = dashcam.cmd(cmd, par);
+                js("window.forteDash&&forteDash.camRespuesta&&forteDash.camRespuesta(" + cmd + "," + JSONObject.quote(r) + ")");
+            }).start();
+        }
+
+        /** Abre los ajustes de Wi-Fi del teléfono. */
+        @JavascriptInterface
+        public void wifiAjustes() {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 } catch (Exception ignored) {
                 }
             });
