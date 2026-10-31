@@ -46,21 +46,13 @@ function avisar(modo, id, texto, voz, pit, lado) {
 /* ================= qué necesita la cámara ================= */
 // de dónde sale la imagen: la cámara del teléfono o la dashcam Pruveeo por Wi-Fi
 F.camFuente = function () {
-  if (F.cfg.fuenteCam === 'pruveeo') {
-    const p = F.pruveeo;
-    if (p && p.listo()) return { el: p.lienzo, w: p.lienzo.width, h: p.lienzo.height, focal: .3 };   // lente muy abierto
-    return { motivo: 'Pruveeo: ' + (p ? p.motivo() : 'sin conectar') };
-  }
-  const v = document.getElementById('camVid');
-  if (!ui.cam.stream || !v) return { motivo: 'sin cámara' };
-  if (v.paused) v.play().catch(() => {});
-  if (!v.videoWidth) return { motivo: 'esperando imagen' };
-  return { el: v, w: v.videoWidth, h: v.videoHeight, focal: .714 };
+  const p = F.pruveeo;
+  if (p && p.listo()) return { el: p.lienzo, w: p.lienzo.width, h: p.lienzo.height, focal: .3 };   // lente muy abierto
+  return { motivo: 'Pruveeo: ' + (p ? p.motivo() : 'sin conectar') };
 };
-const camQuiere = () => (F.cfg.carril && F.cfg.carril !== 'off') || (F.cfg.peatones && F.cfg.peatones !== 'off') || F.cfg.semaforo || F.cfg.deteccion;
+const camQuiere = () => F.cfg.placas || (F.cfg.carril && F.cfg.carril !== 'off') || (F.cfg.peatones && F.cfg.peatones !== 'off') || F.cfg.semaforo || F.cfg.deteccion;
 F.visionAplicar = async function () {
-  if (camQuiere() && F.cfg.fuenteCam === 'pruveeo') { if (F.pruveeo && !F.pruveeo.activo()) F.pruveeo.conectar(); }
-  else if (camQuiere() && !ui.cam.stream) { try { await ui.camStart(); } catch (e) {} }
+  if (camQuiere() && F.pruveeo && !F.pruveeo.activo()) F.pruveeo.conectar();
   if (F.visionRevisar) await F.visionRevisar();
   if (F.cfg.carril && F.cfg.carril !== 'off') carrilIniciar(); else carrilParar();
   if (!F.cfg.semaforo) { F.luz = null; luzHist.length = 0; }

@@ -1,7 +1,7 @@
 /* Tablero Forte · aviso de cansancio: si cierras los ojos manejando, alarma y voz,
    y le avisa a la persona que elijas (SMS automático con hora, velocidad y ubicación;
    la foto por WhatsApp se abre lista cuando el carro se detiene).
-   La cara se ve con la cámara de adentro de la Pruveeo o con la cámara frontal del teléfono. */
+   La cara se ve con la cámara de adentro de la Pruveeo. */
 (function () {
 'use strict';
 const F = window.F, ui = F.ui, $ = F.$, K = F.K;
@@ -11,7 +11,6 @@ for (const [k, v] of Object.entries({ cansancio: false, ojosFuente: 'pruveeo', c
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 const MODELO = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 const O = { modelo: null, cargando: false, on: false, cerradoDesde: 0, ultimaCara: 0, alarmaT: 0, avisoT: 0, estado: 'apagado', pendiente: null, stream: null, score: 0 };
-const vid = document.createElement('video'); vid.muted = true; vid.playsInline = true; vid.setAttribute('playsinline', '');
 const foto = document.createElement('canvas');
 
 F.ojos = { estado: () => O.estado, on: () => O.on, score: () => O.score };
@@ -31,20 +30,10 @@ async function cargarModelo() {
   return O.modelo;
 }
 
-// de dónde sale la cara
+// la cara se ve con la cámara de adentro de la Pruveeo
 async function fuente() {
-  if (F.cfg.ojosFuente === 'pruveeo') {
-    if (O.stream) { O.stream.getTracks().forEach(t => t.stop()); O.stream = null; }
-    if (F.pruveeo && !F.pruveeo.activo()) F.pruveeo.conectar();
-    return F.pruveeo && F.pruveeo.listo() ? F.pruveeo.lienzo : null;
-  }
-  if (!O.stream) {
-    try {
-      O.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
-      vid.srcObject = O.stream; await vid.play().catch(() => {});
-    } catch (e) { O.estado = 'no pude abrir la cámara frontal'; return null; }
-  }
-  return vid.videoWidth ? vid : null;
+  if (F.pruveeo && !F.pruveeo.activo()) F.pruveeo.conectar();
+  return F.pruveeo && F.pruveeo.listo() ? F.pruveeo.lienzo : null;
 }
 
 async function ciclo() {
@@ -52,13 +41,13 @@ async function ciclo() {
   try {
     const m = await cargarModelo();
     const src = m ? await fuente() : null;
-    if (m && !src) O.estado = F.cfg.ojosFuente === 'pruveeo' ? 'esperando el video de la Pruveeo' : 'esperando la cámara frontal';
+    if (m && !src) O.estado = 'esperando el video de la Pruveeo';
     if (m && src) {
       const r = m.detectForVideo(src, performance.now());
       const bs = r.faceBlendshapes && r.faceBlendshapes[0];
       if (!bs) {
         O.score = 0; O.cerradoDesde = 0;
-        O.estado = performance.now() - O.ultimaCara > 4000 ? (F.cfg.ojosFuente === 'pruveeo' ? 'no veo tu cara (toca "Cambiar vista" en la Pruveeo)' : 'no veo tu cara') : O.estado;
+        O.estado = performance.now() - O.ultimaCara > 4000 ? 'no veo tu cara (toca "Cambiar vista" en la Pruveeo)' : O.estado;
       } else {
         O.ultimaCara = performance.now();
         const sc = n => (bs.categories.find(c => c.categoryName === n) || {}).score || 0;
@@ -123,7 +112,6 @@ F.ojosAplicar = function () {
   if (quiere && !O.on) { O.on = true; O.estado = 'iniciando'; ciclo(); }
   if (!quiere && O.on) {
     O.on = false; O.estado = 'apagado'; O.cerradoDesde = 0;
-    if (O.stream) { O.stream.getTracks().forEach(t => t.stop()); O.stream = null; }
   }
 };
 F.ojosProbar = () => { alarma.voz = 0; O.alarmaT = 0; F.beep('alarma'); F.alert('cansancio', '¡Despierta! Cerraste los ojos (prueba)', 'crit', 'Despierta. No te duermas'); };

@@ -83,7 +83,7 @@ ui.toast = toast;
 const SECCIONES = [
   ['disenos', 'Diseños'], ['conexion', 'Conexión OBD'], ['bateria', 'Batería'], ['viaje', 'Viaje'], ['mapa', 'Mapa del viaje'],
   ['herramientas', 'Arrancadas y fuerza G'], ['fallas', 'Fallas'], ['aceite', 'Aceite'], ['gasolina', 'Bitácora de gasolina'],
-  ['camara', 'Cámara (dashcam)'], ['musica', 'Música'], ['alertas', 'Alertas y valet'], ['clima', 'Clima'], ['ajustes', 'Ajustes']
+  ['musica', 'Música'], ['alertas', 'Alertas y valet'], ['clima', 'Clima'], ['ajustes', 'Ajustes']
 ];
 let seccion = null;
 const body = $('dBody');

@@ -24,6 +24,10 @@ App Android que muestra el tablero digital y lee tu Kia Forte 2020 con el adapta
 3. Toca el botón de arriba a la izquierda, elige tu OBDII. La próxima vez se conecta solo.
 4. Pestaña **Fallas** › Leer fallas para ver códigos del check engine.
 
+## Novedades 3.6
+- Todo lo de cámara usa solo la dashcam Pruveeo (ya no la del celular). El botón Foto guarda lo que ve la Pruveeo.
+- Menú ⋮ › **Placas**: "Foto al carro de enfrente". Cuando un carro va justo enfrente y cerca, le toma foto, busca y lee la placa, saca el color y el tipo, y lo guarda. Sale un recuadro chiquito abajo a la derecha. "Ver fotos de placas" abre la lista con buscador; la placa, el modelo y el color se pueden corregir a mano.
+
 ## Novedades 3.5
 - Carros y personas al estilo Tesla: siluetas blancas lisas. Los carros que cruzan enfrente se ven de lado; los que están detenidos salen en gris con "Parado".
 - Menú ⋮ › **Cansancio**: si cierras los ojos 1.5 s arriba de 10 km/h, alarma y voz "Despierta". Le llega un SMS automático a tu contacto con hora, velocidad y ubicación; la foto por WhatsApp se abre lista cuando el carro se detiene. La cara se ve con la cámara de adentro de la Pruveeo o con la frontal del teléfono.

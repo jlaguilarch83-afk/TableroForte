@@ -6,7 +6,6 @@
 'use strict';
 const F = window.F, ui = F.ui, $ = F.$;
 if (F.cfg.pruveeo === undefined) F.cfg.pruveeo = false;
-if (F.cfg.fuenteCam === undefined) F.cfg.fuenteCam = 'tel';
 
 const P = { on: false, cargando: false, t: 0, est: null, diag: null, vista: 0 };
 const lienzo = document.createElement('canvas'), lc = lienzo.getContext('2d');
@@ -60,6 +59,17 @@ window.forteDash.camProbado = r => {
   if (F.masMenu) F.masMenu.pintar();
 };
 window.forteDash.camRespuesta = (c, txt) => { if (c === 3028) ui.toast('Vista cambiada'); };
+
+/* ---- foto de lo que ve la dashcam (el video lo sigue grabando ella) ---- */
+F.pruveeoFoto = function (evento) {
+  if (!F.pruveeo.listo()) { ui.toast('Conecta la Pruveeo para tomar fotos'); return; }
+  const b64 = lienzo.toDataURL('image/jpeg', .9).split(',')[1], nombre = `${evento ? 'Evento' : 'Pruveeo'}_${Date.now()}.jpg`;
+  let ok = false;
+  if (window.OBD && OBD.guardarFoto) { try { ok = !!OBD.guardarFoto(b64, nombre); } catch (e) {} }
+  else { const a = document.createElement('a'); a.href = 'data:image/jpeg;base64,' + b64; a.download = nombre; a.click(); ok = true; }
+  F.alert('foto', ok ? (evento ? 'Foto del momento guardada' : 'Foto guardada en la galería') : 'No se pudo guardar la foto', ok ? 'ok' : 'warn');
+  const f = $('flash'); if (f) { f.hidden = false; setTimeout(() => { f.hidden = true; }, 180); }
+};
 
 /* ---- visor en pantalla completa ---- */
 const vis = document.createElement('div'); vis.id = 'pvVer'; vis.hidden = true;

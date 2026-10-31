@@ -427,18 +427,20 @@ const pop = {
     if (popEl.hidden) return;
     const c = F.cfg, tol = c.tolerancia ?? 5, ct = c.contacto, sc = popEl.scrollTop;
     popEl.innerHTML = `<div class="ph"><b>Opciones</b><button type="button" class="px" aria-label="Cerrar">✕</button></div>
-<h4>Cámara</h4>
+<h4>Cámara Pruveeo (Wi-Fi)</h4>
+${sw('pruveeo', 'Conectar la Pruveeo', 'Conecta el teléfono al Wi-Fi de la cámara (MUSTANG, clave 12345678)')}
+<div class="row"><span>Estado</span><b class="ctc pvEst">${esc(F.pruveeo.motivo())}</b></div>
+<div class="step" style="justify-content:flex-start"><button type="button" data-a="pvWifi">Wi-Fi</button><button type="button" data-a="pvVer">Ver en vivo</button><button type="button" data-a="pvProbar">Probar conexión</button></div>
+${F.pruveeo.diag() ? `<p class="hint" style="color:#cfd7e4">${esc(F.pruveeo.diag())}</p>` : ''}
+<p class="hint">Todos los avisos de cámara usan la Pruveeo. Si Android dice que esa red no tiene internet, elige "Mantener conexión"; mapas y clima siguen con tus datos móviles.</p>
+<h4>Avisos con la cámara</h4>
 <div class="row"><span>Salida de carril</span>${seg('carril', [['off', 'Apagado'], ['pitido', 'Pitido'], ['voz', 'Voz']])}</div>
 ${c.carril !== 'off' ? `<button type="button" class="mini" data-a="calibrar">Calibrar centro del carril</button><p class="hint">Avisa arriba de 45 km/h. Como no puedo leer la direccional, al cambiarte de carril también suena.</p>` : ''}
 <div class="row"><span>Peatones y ciclistas</span>${seg('peatones', [['off', 'Apagado'], ['pitido', 'Pitido'], ['voz', 'Voz']])}</div>
 ${sw('semaforo', 'Semáforo (rojo: para · verde: avanza)', 'Es una ayuda: de noche o con el sol de frente puede fallar')}
-<h4>Cámara Pruveeo (Wi-Fi)</h4>
-${sw('pruveeo', 'Conectar la Pruveeo', 'Conecta el teléfono al Wi-Fi de la cámara (MUSTANG, clave 12345678)')}
-${c.pruveeo ? `<div class="row"><span>Los avisos de la cámara usan</span>${seg('fuenteCam', [['tel', 'Teléfono'], ['pruveeo', 'Pruveeo']])}</div>
-<div class="row"><span>Estado</span><b class="ctc pvEst">${esc(F.pruveeo.motivo())}</b></div>
-<div class="step" style="justify-content:flex-start"><button type="button" data-a="pvWifi">Wi-Fi</button><button type="button" data-a="pvVer">Ver en vivo</button><button type="button" data-a="pvProbar">Probar conexión</button></div>
-${F.pruveeo.diag() ? `<p class="hint" style="color:#cfd7e4">${esc(F.pruveeo.diag())}</p>` : ''}
-<p class="hint">Si Android dice que esa red no tiene internet, elige "Mantener conexión". Mapas y clima siguen con tus datos móviles. La Pruveeo sigue grabando normal.</p>` : ''}
+<h4>Placas</h4>
+${sw('placas', 'Foto al carro de enfrente', 'Guarda su foto, placa, color y tipo; sale un recuadro chiquito')}
+<button type="button" class="mini" data-a="placasVer">Ver fotos de placas${F.placasCuenta ? ` (${F.placasCuenta()})` : ''}</button>
 <h4>Límite de velocidad</h4>
 <div class="row"><span>Tolerancia arriba del límite</span><div class="step"><button type="button" data-a="tol-">−</button><b>+${tol} km/h</b><button type="button" data-a="tol+">+</button></div></div>
 <h4>Motor y batería</h4>
@@ -459,11 +461,10 @@ ${window.OBD && OBD.pickContact ? '<button type="button" class="mini" data-a="co
 <p class="hint">Si no respondes, manda un SMS automático con tu ubicación y abre WhatsApp con el mensaje listo.</p>
 <h4>Cansancio (ojos cerrados)</h4>
 ${sw('cansancio', 'Avisar si cierro los ojos', 'Alarma y voz si cierras los ojos 1.5 s arriba de 10 km/h')}
-${c.cansancio ? `<div class="row"><span>Ver mi cara con</span>${seg('ojosFuente', [['pruveeo', 'Pruveeo adentro'], ['tel', 'Teléfono']])}</div>
-<div class="row"><span>Estado</span><b class="ctc ojEst">${esc(F.ojos ? F.ojos.estado() : '')}</b></div>
+${c.cansancio ? `<div class="row"><span>Estado</span><b class="ctc ojEst">${esc(F.ojos ? F.ojos.estado() : '')}</b></div>
 <div class="row"><span>Avisar a</span><b class="ctc">${c.contactoCansancio ? esc(c.contactoCansancio.nombre || c.contactoCansancio.tel) : ct ? esc(ct.nombre || ct.tel) + ' <small>(el del choque)</small>' : 'Nadie todavía'}</b></div>
 <div class="step" style="justify-content:flex-start">${window.OBD && OBD.pickContact ? '<button type="button" data-a="contactoCansancio">Elegir contacto</button>' : ''}<button type="button" data-a="probarOjos">Probar alarma</button></div>
-<p class="hint">Le llega un SMS automático con la hora, la velocidad y tu ubicación. La foto por WhatsApp se abre lista cuando el carro se detiene (WhatsApp siempre pide tocar Enviar). ${c.ojosFuente === 'pruveeo' ? 'En la Pruveeo usa "Cambiar vista" hasta que se vea la cámara de adentro (o las dos juntas).' : 'Con la cámara frontal, los avisos de carros y carril deben usar la Pruveeo.'}</p>` : ''}
+<p class="hint">Le llega un SMS automático con la hora, la velocidad y tu ubicación. La foto por WhatsApp se abre lista cuando el carro se detiene (WhatsApp siempre pide tocar Enviar). La cara se ve con la cámara de adentro de la Pruveeo: en "Ver en vivo" usa "Cambiar vista" hasta que salgan las dos juntas.</p>` : ''}
 <h4>Clima</h4>
 ${sw('climaFx', 'Lluvia o nieve en la pantalla', 'Solo cuando de verdad está lloviendo donde vas')}
 ${sw('climaAdelante', 'Avisar si viene lluvia o granizo adelante')}
@@ -492,11 +493,11 @@ function cambiar(k, v) {
   if (k === 'arrancones') dock();
   if (k === 'pruveeo') {
     if (v) { F.pruveeo.conectar(); ui.toast('Conectando con la Pruveeo…'); }
-    else { F.pruveeo.parar(); if (F.cfg.fuenteCam === 'pruveeo') { F.cfg.fuenteCam = 'tel'; F.save(); F.visionAplicar && F.visionAplicar(); } }
+    else F.pruveeo.parar();
     F.pruveeoDock && F.pruveeoDock();
   }
-  if (k === 'fuenteCam') F.visionAplicar && F.visionAplicar();
-  if (k === 'cansancio' || k === 'ojosFuente') { if (k === 'ojosFuente' && F.ojosAplicar) { F.cfg.cansancio = false; F.ojosAplicar(); F.cfg.cansancio = true; } F.ojosAplicar && F.ojosAplicar(); if (v && window.OBD && OBD.askSms) OBD.askSms(); }
+  if (k === 'placas') F.visionAplicar && F.visionAplicar();
+  if (k === 'cansancio') { F.ojosAplicar && F.ojosAplicar(); if (v && window.OBD && OBD.askSms) OBD.askSms(); }
   if (k === 'choque' && v) {
     if (window.OBD && OBD.askSms) OBD.askSms();
     if (!F.cfg.contacto) ui.toast('Ahora elige a quién avisar');
@@ -509,6 +510,7 @@ function accion(a) {
   if (a === 'pvWifi') { if (window.OBD && OBD.wifiAjustes) OBD.wifiAjustes(); else ui.toast('Abre los ajustes de Wi-Fi del teléfono'); return; }
   if (a === 'pvVer') { pop.cerrar(); F.pruveeo.ver(); return; }
   if (a === 'pvProbar') { F.pruveeo.probar(); return; }
+  if (a === 'placasVer') { pop.cerrar(); F.placasVer && F.placasVer(); return; }
   if (a === 'calibrar') { ui.toast(F.carrilCalibrar && F.carrilCalibrar() ? 'Listo: este es el centro de tu carril' : 'Todavía no veo las líneas del carril'); return; }
   if (a === 'contacto') { contactoPara = 'contacto'; OBD.pickContact(); return; }
   if (a === 'contactoCansancio') { contactoPara = 'contactoCansancio'; OBD.pickContact(); return; }

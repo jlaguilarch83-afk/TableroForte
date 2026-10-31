@@ -344,8 +344,9 @@ function procesar(txt) {
   }
   if (/bache/.test(t)) return marcarTope('bache');
   if (/tope/.test(t)) return marcarTope('tope');
-  if (/foto/.test(t)) { if (!ui.cam.stream) ui.camStart().then(() => setTimeout(ui.camFoto, 800)); else ui.camFoto(); return decir('Tomando foto'); }
-  if (/graba|video/.test(t)) { (ui.cam.stream ? Promise.resolve() : ui.camStart()).then(() => ui.recStart()); return decir('Grabando'); }
+  if (/placa/.test(t)) { ui.open && F.placasVer ? F.placasVer() : null; return decir('Abriendo las placas'); }
+  if (/foto/.test(t)) { F.pruveeoFoto && F.pruveeoFoto(); return decir('Tomando foto con la Pruveeo'); }
+  if (/graba|video/.test(t)) return decir('La Pruveeo ya está grabando todo el tiempo');
   if (/viaje/.test(t)) return decir(`Llevas ${F.trip.km.toFixed(1)} kilómetros, calificación ${F.scoreVal()}`);
   if (/falla|check/.test(t)) { F.readCodes(); return decir('Leyendo fallas'); }
   if (/noche/.test(t)) { F.cfg.noche = F.isNight() ? 'off' : 'on'; F.save(); return decir(F.cfg.noche === 'on' ? 'Modo noche' : 'Modo día'); }
@@ -383,7 +384,7 @@ function seguir(L) {
       t.acerca += (acerca - t.acerca) * .3; t.vx += (lateral - t.vx) * .35;
       t.dist += (o.dist - t.dist) * .45; t.cx += (o.cx - t.cx) * .5; t.lat += (o.lat - t.lat) * .45;
       t.lado = t.ladoN > 0 ? o.lado || t.ladoN > 2 : o.lado; t.ladoN = o.lado ? Math.min(6, t.ladoN + 1) : Math.max(0, t.ladoN - 1);
-      t.cls = o.cls; t.w = o.w; t.h = o.h; t.t = ahora; t.n++;
+      t.cls = o.cls; t.w = o.w; t.h = o.h; t.bx = o.bx; t.by = o.by; t.t = ahora; t.n++;
       // parado: te le acercas casi a la misma velocidad a la que vas
       const suVel = vms - t.acerca;
       const quieto = vms > 4 && Math.abs(suVel) < 2.5 && !(t.lado && Math.abs(t.vx) > .05);
@@ -395,22 +396,20 @@ function seguir(L) {
     }
   }
   pistas = pistas.filter(t => ahora - t.t < 900);
-  return pistas.filter(t => usadas.has(t)).map(t => ({ id: t.id, cls: t.cls, cx: t.cx, w: t.w, h: t.h, dist: t.dist, lat: t.lat,
+  return pistas.filter(t => usadas.has(t)).map(t => ({ id: t.id, cls: t.cls, cx: t.cx, w: t.w, h: t.h, bx: t.bx, by: t.by, n: t.n, dist: t.dist, lat: t.lat,
     lado: t.lado, dir: t.vx > .02 ? 1 : t.vx < -.02 ? -1 : 0, parado: t.paradoN >= 3 }));
 }
 function cargarScript(src) {
   return new Promise((ok, mal) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => mal(new Error('no cargó ' + src)); document.head.appendChild(s); });
 }
 // el detector corre si lo pide cualquiera: carros, peatones o semáforo
-const quiereModelo = () => !!(F.cfg.deteccion || (F.cfg.peatones && F.cfg.peatones !== 'off') || F.cfg.semaforo);
+const quiereModelo = () => !!(F.cfg.deteccion || F.cfg.placas || (F.cfg.peatones && F.cfg.peatones !== 'off') || F.cfg.semaforo);
 async function iniciarDeteccion() {
   if (detectando || cargando) return;
   cargando = true;
   try {
-    if (F.cfg.fuenteCam !== 'pruveeo') {
-      if (!ui.cam.stream) await ui.camStart();
-      if (!ui.cam.stream) throw new Error('sin cámara');
-    }
+    // todo sale de la dashcam Pruveeo
+    if (F.pruveeo && !F.pruveeo.activo()) F.pruveeo.conectar();
     if (!window.cocoSsd) {
       await cargarScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js');
       await cargarScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
@@ -454,9 +453,10 @@ async function ciclo() {
         const dAlto = (ALTO[cls] || 1.5) * focal / Math.max(6, h), dAncho = ANCHO[cls] * focal / Math.max(8, w);
         const dist = lado || cls === 'person' ? dAlto : (dAlto + dAncho) / 2;
         const cx = (x + w / 2) / vw;
-        return { cls, cx, w: w / vw, h: h / vh, dist, lado, lat: (cx - .5) * vw / focal * dist };
+        return { cls, cx, w: w / vw, h: h / vh, bx: x / vw, by: y / vh, dist, lado, lat: (cx - .5) * vw / focal * dist };
       });
       F.objs = seguir(crudos);
+      F.emit('objs', F.objs);
       const frente = F.objs.filter(o => Math.abs(o.cx - .5) < .16 && o.cls !== 'person' && o.cls !== 'bicycle').sort((a, b) => a.dist - b.dist)[0];
       F.frontDist = frente ? frente.dist : null;
       F.detStatus = { estado: 'activa', n: F.objs.filter(o => o.cls !== 'person' && o.cls !== 'bicycle').length, t: Date.now() };
@@ -470,7 +470,7 @@ async function ciclo() {
   setTimeout(ciclo, 200);
 }
 ui.addPanel('deteccion', 'Carros alrededor (cámara)', () => {
-  body.innerHTML = '<p class="note">Pon el teléfono en un soporte con la cámara trasera viendo hacia el frente. La app detecta carros, motos y personas, los dibuja en el camino del diseño Forte Tesla y te avisa con voz si vas muy pegado al de adelante. Gasta más batería y la primera vez necesita internet para bajar el detector.</p>' +
+  body.innerHTML = '<p class="note">Usa el video de la dashcam Pruveeo (conéctala en el menú ⋮). La app detecta carros, motos y personas, los dibuja en el camino del diseño Forte Tesla y te avisa con voz si vas muy pegado al de adelante. La primera vez necesita internet para bajar el detector.</p>' +
     (detectando ? kv('Estado', esc(F.detStatus.estado)) + kv('Backend', window.tf && tf.getBackend ? tf.getBackend() : '—') + kv('Objetos', String(F.objs.length)) + kv('Al frente', F.frontDist == null ? '—' : `${Math.round(F.frontDist)} m`) + btn('dOff', 'Apagar detección')
       : btn('dOn', cargando ? 'Cargando…' : 'Activar detección', 'pri')) +
     '<p class="note">La distancia es aproximada; no sustituye tu atención al manejar.</p>';
@@ -579,7 +579,8 @@ function irGasolinera() {
     }).catch(() => ui.toast('No se pudo buscar. Revisa los datos móviles.'));
 }
 
-F.guardarEvento = guardarEvento;
+// con la Pruveeo, guardar el momento = foto de lo que ve la dashcam (ella sigue grabando el video)
+F.guardarEvento = () => F.pruveeoFoto && F.pruveeoFoto(true);
 
 /* ---- desde el reloj ---- */
 window.forteDash.watchTope = () => F.marcarTope('tope');
@@ -587,7 +588,7 @@ window.forteDash.watchTope = () => F.marcarTope('tope');
 /* ---- la barra ---- */
 const I = {
   rec: '<circle cx="12" cy="12" r="6"/>',
-  evento: '<path d="M12 3v10M7 9l5 5 5-5M5 20h14"/>',
+  evento: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   carros: '<path d="M4 16v-4l2-5h12l2 5v4z"/><path d="M4 12h16"/><circle cx="8" cy="16" r="1.6"/><circle cx="16" cy="16" r="1.6"/>',
   gas: '<path d="M5 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M4 20h11M7 8h5"/><path d="M14 10h2a2 2 0 0 1 2 2v4a1.5 1.5 0 0 0 3 0V9l-3-3"/>',
   tope: '<path d="M2 18h20M5 18c1.5-5 4-7 7-7s5.5 2 7 7"/>',
@@ -599,8 +600,7 @@ const I = {
   viaje: '<path d="M4 19h16M6 15l4-6 4 3 4-7"/>'
 };
 const BOTONES = [
-  ['rec', 'Grabar', () => { const c = ui.cam; if (c.rec) { ui.recStop(); } else (c.stream ? Promise.resolve() : ui.camStart()).then(() => { if (ui.cam.stream) ui.recStart(); pintar(); }); pintar(); }],
-  ['evento', 'Guardar', guardarEvento],
+  ['evento', 'Foto', () => F.pruveeoFoto && F.pruveeoFoto()],
   ['carros', 'Carros', () => { if (F.cfg.deteccion) { F.det.off(); ui.toast('Detección de carros apagada'); pintar(); } else { ui.toast('Activando la detección…'); F.det.on().then(pintar); } }],
   ['gas', 'Gasolina', () => F.nav ? (F.nav.activo() ? F.nav.parar(true) : F.nav.gas()) : irGasolinera()],
   ['tope', 'Tope', () => F.marcarTope('tope')],
@@ -617,7 +617,7 @@ dock.innerHTML = BOTONES.map(([id, l]) => `<button type="button" data-b="${id}">
 document.body.appendChild(dock);
 dock.querySelectorAll('button').forEach(b => { const def = BOTONES.find(x => x[0] === b.dataset.b); b.onclick = () => def[2](); });
 function pintar() {
-  const on = { rec: !!ui.cam.rec, carros: !!F.cfg.deteccion, radar: F.cfg.radares !== false, gas: !!(F.nav && F.nav.activo()) };
+  const on = { carros: !!F.cfg.deteccion, radar: F.cfg.radares !== false, gas: !!(F.nav && F.nav.activo()) };
   dock.querySelectorAll('button').forEach(b => b.classList.toggle('on', !!on[b.dataset.b]));
 }
 setInterval(pintar, 1000); pintar();
