@@ -475,7 +475,13 @@ ${c.cansancio ? `<div class="row"><span>Estado</span><b class="ctc ojEst">${esc(
 <div class="step" style="justify-content:flex-start">${window.OBD && OBD.pickContact ? '<button type="button" data-a="contactoCansancio">Elegir contacto</button>' : ''}<button type="button" data-a="probarOjos">Probar alarma</button></div>
 <p class="hint">Le llega un SMS automático con la hora, la velocidad y tu ubicación. La foto por WhatsApp se abre lista cuando el carro se detiene. La cara se ve con la cámara de adentro de la Pruveeo.</p>` : ''}
 <h4>Ubicación</h4>
-<button type="button" class="mini" data-a="ubic">Mandar mi ubicación por WhatsApp</button>`
+<button type="button" class="mini" data-a="ubic">Mandar mi ubicación por WhatsApp</button>
+<h4>Mi Casa</h4>
+${sw('casaOn', 'Mandar gasolina y batería a Mi Casa', 'Sale en la tableta de la casa y en el refri: gasolina, batería y dónde quedó el carro')}
+${c.casaOn ? `<div class="row"><input type="tel" placeholder="PIN de Mi Casa" data-a="casaPinIn" value="${esc(c.casaPin || '')}"><button type="button" class="mini" data-a="casaPinOk">Guardar</button></div>
+<div class="row"><span>Último envío</span><b class="ctc">${esc(F.casaEstado ? F.casaEstado() : '')}</b></div>
+<div class="step" style="justify-content:flex-start"><button type="button" data-a="casaProbar">Mandar ahora</button></div>
+<p class="hint">Es el mismo PIN con el que entras a Mi Casa. Se manda cada 5 minutos mientras está conectado el OBD y al apagar el carro.</p>` : ''}`
     };
     const TABS = [['camara', 'Cámara'], ['avisos', 'Avisos'], ['diversion', 'Diversión'], ['seguridad', 'Seguridad']];
     if (!G[tabMas]) tabMas = 'camara';
@@ -490,7 +496,7 @@ ${c.cansancio ? `<div class="row"><span>Estado</span><b class="ctc ojEst">${esc(
     popEl.querySelectorAll('[data-a]').forEach(b => {
       const a = b.dataset.a;
       if (a === 'vol') { b.oninput = () => { F.cfg.motorVol = +b.value; F.save(); }; return; }
-      if (a === 'telManual') return;
+      if (a === 'telManual' || a === 'casaPinIn') return;
       b.onclick = () => accion(a);
     });
     popEl.scrollTop = sc;
@@ -532,6 +538,8 @@ function accion(a) {
   if (a === 'contactoCansancio') { contactoPara = 'contactoCansancio'; OBD.pickContact(); return; }
   if (a === 'probarOjos') { pop.cerrar(); F.ojosProbar && F.ojosProbar(); return; }
   if (a === 'telOk') { const t = popEl.querySelector('[data-a="telManual"]').value.trim(); if (t.replace(/\D/g, '').length >= 8) { c.contacto = { nombre: '', tel: t }; F.save(); ui.toast('Contacto guardado'); } else ui.toast('Escribe un teléfono válido'); pop.pintar(); return; }
+  if (a === 'casaPinOk') { c.casaPin = popEl.querySelector('[data-a="casaPinIn"]').value.trim(); F.save(); ui.toast(c.casaPin ? 'PIN guardado' : 'Sin PIN'); if (F.casaEnviar) F.casaEnviar(true); pop.pintar(); return; }
+  if (a === 'casaProbar') { if (F.casaEnviar) F.casaEnviar(true).then(() => pop.pintar()); return; }
   if (a === 'probarChoque') { pop.cerrar(); choqueAlerta(true); return; }
   if (a.startsWith('fx-')) { pop.cerrar(); F.climaProbar(a.slice(3)); return; }
 }

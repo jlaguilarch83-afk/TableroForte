@@ -24,6 +24,10 @@ App Android que muestra el tablero digital y lee tu Kia Forte 2020 con el adapta
 3. Toca el botón de arriba a la izquierda, elige tu OBDII. La próxima vez se conecta solo.
 4. Pestaña **Fallas** › Leer fallas para ver códigos del check engine.
 
+## Novedades 3.9 · Mi Casa
+- ⋮ › Seguridad › **Mi Casa**: manda la gasolina, la batería, el alcance y dónde quedó el carro a la app de la casa (tableta y refri). Usa el mismo PIN de Mi Casa. Se manda cada 5 min con el OBD conectado y al apagar el carro.
+- Nueva app para el reloj: **MiCasaReloj.apk** (viene en la misma descarga). Tarjetas por cuarto con su foto: deslizas o giras el bisel y tocas para prender o apagar. Primera pantalla: la casita 3D con lo prendido. También alarma y "Me voy" (dos toques). La primera vez pide el PIN de Mi Casa.
+
 ## Novedades 3.8 · el camino de verdad
 - Forte Tesla dibuja la calle con el mapa: curvas, subidas y bajadas, carriles reales y los de sentido contrario (línea amarilla), calles que salen, semáforos, pasos peatonales, altos, ceda el paso y topes.
 - Letrero de curva cerrada con la velocidad recomendada (y voz si vas rápido).
