@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
  */
 public class CasaActivity extends Activity {
 
-    static final String BASE = "https://micasa-jl.netlify.app/api/";
+    static final String BASE = "https://micasa-jl.jl-aguilarch83.workers.dev/api/";
     static final long CADA_MS = 6000;
 
     final Handler main = new Handler(Looper.getMainLooper());

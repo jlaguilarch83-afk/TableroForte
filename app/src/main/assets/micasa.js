@@ -4,7 +4,7 @@
 (function () {
 'use strict';
 const F = window.F;
-const URL = 'https://micasa-jl.netlify.app/api/casa?action=kia';
+const URL = 'https://micasa-jl.jl-aguilarch83.workers.dev/api/casa?action=kia';
 const CADA = 5 * 60e3;
 let ultimo = null, enviadoAt = 0, pendiente = false, estado = 'Todavía no', enviando = false, okAntes = false;
 
