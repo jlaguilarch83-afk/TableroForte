@@ -49,49 +49,6 @@ F.on('conn', (cn) => {
   okAntes = ok;
 });
 
-// ---------- Llegada a la casa ----------
-// A unos 500 m de la casa (viniendo de más de 800 m): Mi Casa prende las luces si es de noche,
-// el carro avisa con voz y sale un aviso con botón "Abrir portón" (también en el reloj).
-const BASE = 'https://micasa-jl.netlify.app/api/casa?action=';
-let casaPos = null, casaPosAt = 0, lejos = false, llegandoAt = 0;
-const km = (a, b, c, d) => { const r = Math.PI / 180, x = Math.sin((c - a) * r / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin((d - b) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); };
-async function pedirCasa() {
-  if (Date.now() - casaPosAt < 6 * 3600e3) return;
-  casaPosAt = Date.now();
-  try {
-    const r = await fetch(BASE + 'casa', { headers: { 'X-Casa-Pin': F.cfg.casaPin } });
-    const j = await r.json();
-    if (j.ok) { casaPos = j.casa; F.casaLlegadaOn = !j.llegada || j.llegada.on !== false; }
-  } catch (e) { casaPosAt = 0; }
-}
-async function llegando() {
-  llegandoAt = Date.now();
-  let r = null;
-  try {
-    const res = await fetch(BASE + 'llegando', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Casa-Pin': F.cfg.casaPin }, body: JSON.stringify({ who: 'Kia' }) });
-    r = await res.json();
-  } catch (e) { /* sin internet: igual se pregunta */ }
-  const luces = r && r.luces && r.luces.length ? 'Prendí ' + r.luces.length + (r.luces.length === 1 ? ' luz. ' : ' luces. ') : '';
-  const abierto = r && r.porton;
-  F.speak('Llegando a casa. ' + luces + (abierto ? 'El portón ya está abierto.' : '¿Abro el portón? Toca el aviso.'));
-  if (!abierto) {
-    const txt = luces + 'Toca "Abrir portón" aquí o en tu reloj.' + (r && r.alarma && r.alarma !== 'disarm' ? ' Ojo: la alarma está armada.' : '');
-    if (window.OBD && OBD.casaLlegada) { try { OBD.casaLlegada(F.cfg.casaPin, txt); } catch (e) {} }
-    else F.ui.toast('Llegando a casa · abre el portón desde Mi Casa');
-  }
-}
-setInterval(() => {
-  const c = F.cfg;
-  if (!c.casaOn || !c.casaPin || c.casaLlegada === false || F.casaLlegadaOn === false) return;
-  pedirCasa();
-  const g = F.gps;
-  if (!casaPos || !g || g.sim || g.lat == null) return;
-  const d = km(casaPos.lat, casaPos.lon, g.lat, g.lon);
-  if (d > 0.8) lejos = true;
-  if (lejos && d < 0.5 && Date.now() - llegandoAt > 10 * 60e3) { lejos = false; llegando(); }
-}, 4000);
-F.casaProbarLlegada = llegando;
-
 setInterval(() => {
   if (!F.cfg.casaOn) return;
   const d = lectura();

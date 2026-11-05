@@ -24,7 +24,7 @@ F.emit = (ev, a) => { (handlers[ev] || []).forEach(fn => { try { fn(a); } catch 
 /* ---------- ajustes ---------- */
 const DEF = {
   skin: 'pano', precio: 24.5, voz: true, hud: false, bienvenida: true, demo: false, musica: true, sportOn: 75, noche: 'auto',
-  limite: 0, gasAviso: 15, estacionadoMin: 5, casaLlegada: true,
+  limite: 0, gasAviso: 15, estacionadoMin: 5,
   valet: { on: false, pin: '', limite: 80 },
   nivel: { pitch: 0, roll: 0 }
 };
