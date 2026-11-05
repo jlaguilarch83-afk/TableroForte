@@ -55,7 +55,8 @@ public class CasaView extends View {
         {"rec_azul", "Cuarto azul", 62.2, 4, 13.8, 35},
     };
     static final int N = CUARTOS.length;
-    static final int P_CASA = 0, P_FACHADA = N + 1, P_ALARMA = N + 2, P_MEVOY = N + 3, PAGINAS = N + 4;
+    // Orden: casa 3D, fachada y alarma primero; luego los cuartos y al final Me voy
+    static final int P_CASA = 0, P_FACHADA = 1, P_ALARMA = 2, P_CUARTO1 = 3, P_MEVOY = N + 3, PAGINAS = N + 4;
 
     static final int AMBAR = 0xFFFFC15E, VERDE = 0xFF6FDCA6, NARANJA = 0xFFFF8F48, ROJO = 0xFFFF3B3B, GRIS = 0xFF8AA0C2, TINTA = 0xFFE7EEFA;
 
@@ -198,7 +199,7 @@ public class CasaView extends View {
         else if (i == P_FACHADA) dibujarFachada(c, w, h);
         else if (i == P_ALARMA) dibujarAlarma(c, w, h);
         else if (i == P_MEVOY) dibujarMeVoy(c, w, h);
-        else dibujarCuarto(c, i - 1, w, h);
+        else dibujarCuarto(c, i - P_CUARTO1, w, h);
     }
 
     void texto(Canvas c, String t, float x, float y, float tam, int color, boolean negrita) {
@@ -516,7 +517,7 @@ public class CasaView extends View {
             invalidate();
             return;
         }
-        alternar((String) CUARTOS[pagina - 1][0]);
+        alternar((String) CUARTOS[pagina - P_CUARTO1][0]);
     }
 
     void tocarPin(float x, float y) {
@@ -530,14 +531,25 @@ public class CasaView extends View {
         }
     }
 
+    // Bisel táctil del Galaxy Watch (girar el dedo en la orilla) o corona: pasa de pantalla en pantalla
+    boolean girarBisel(MotionEvent e) {
+        if (e.getAction() != MotionEvent.ACTION_SCROLL || !e.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER) || pidiendoPin) return false;
+        float v = -e.getAxisValue(MotionEvent.AXIS_SCROLL);
+        if (Math.abs(v) < 0.001f) v = -e.getAxisValue(MotionEvent.AXIS_VSCROLL);
+        giro += v;
+        if (Math.abs(giro) >= 0.5f) {
+            int dir = giro > 0 ? 1 : -1;
+            giro = 0;
+            int destino = Math.max(0, Math.min(PAGINAS - 1, pagina + dir));
+            if (destino != pagina) { performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); irA(destino); }
+        }
+        return true;
+    }
+
     @Override
     public boolean onGenericMotionEvent(MotionEvent e) {
         // Bisel o corona del reloj
-        if (e.getAction() == MotionEvent.ACTION_SCROLL && e.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER) && !pidiendoPin) {
-            giro += -e.getAxisValue(MotionEvent.AXIS_SCROLL);
-            if (Math.abs(giro) >= 1f) { int dir = giro > 0 ? 1 : -1; giro = 0; animarA(dir); }
-            return true;
-        }
+        if (girarBisel(e)) return true;
         return super.onGenericMotionEvent(e);
     }
 }

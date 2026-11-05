@@ -55,6 +55,13 @@ public class CasaActivity extends Activity {
         main.post(ciclo);
     }
 
+    // El bisel manda sus giros aquí aunque la vista no tenga el foco
+    @Override
+    public boolean dispatchGenericMotionEvent(android.view.MotionEvent e) {
+        if (vista != null && vista.girarBisel(e)) return true;
+        return super.dispatchGenericMotionEvent(e);
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
