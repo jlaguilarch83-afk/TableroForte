@@ -53,6 +53,6 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk TableroForte.apk
           cp wear/build/outputs/apk/debug/wear-debug.apk TableroForteReloj.apk
           cp casareloj/build/outputs/apk/debug/casareloj-debug.apk MiCasaReloj.apk
-          gh release create "v3.9.${{ github.run_number }}" TableroForte.apk TableroForteReloj.apk MiCasaReloj.apk \
-            --title "Tablero Forte v3.9.${{ github.run_number }}" \
+          gh release create "v4.0.${{ github.run_number }}" TableroForte.apk TableroForteReloj.apk MiCasaReloj.apk \
+            --title "Tablero Forte v4.0.${{ github.run_number }}" \
             --notes "TableroForte.apk va en el teléfono. TableroForteReloj.apk y MiCasaReloj.apk van en el reloj (Galaxy Watch)." --latest

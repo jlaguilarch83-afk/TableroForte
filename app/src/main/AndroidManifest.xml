@@ -61,5 +61,7 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+        <!-- Mi Casa: botón "Abrir portón" del aviso de llegada (también en el reloj) -->
+        <receiver android:name=".CasaReceiver" android:exported="false" />
     </application>
 </manifest>

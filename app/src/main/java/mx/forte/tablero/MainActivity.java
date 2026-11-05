@@ -530,6 +530,12 @@ public class MainActivity extends Activity implements ObdService.Listener {
             ObdService.requestClear();
         }
 
+        /** Mi Casa: aviso de llegada con botón "Abrir portón" (sale también en el reloj). */
+        @JavascriptInterface
+        public void casaLlegada(String pin, String texto) {
+            CasaReceiver.avisarLlegada(MainActivity.this, pin, texto);
+        }
+
         @JavascriptInterface
         public void speak(String text) {
             if (text == null) return;

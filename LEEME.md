@@ -24,6 +24,10 @@ App Android que muestra el tablero digital y lee tu Kia Forte 2020 con el adapta
 3. Toca el botón de arriba a la izquierda, elige tu OBDII. La próxima vez se conecta solo.
 4. Pestaña **Fallas** › Leer fallas para ver códigos del check engine.
 
+## Novedades 4.0 · Llegada a casa
+- ⋮ › Seguridad › Mi Casa › **Llegada a la casa**: a unos 500 m de la casa, de noche Mi Casa prende las luces que elijas, el carro te avisa con voz y sale un aviso con el botón **Abrir portón** (también en el Galaxy Watch). Botón "Probar llegada" para verlo sin manejar.
+- Para que funcione, en Mi Casa (engrane › Casa y Kia) toca "Estoy en la casa" una vez estando en tu casa.
+
 ## Novedades 3.9 · Mi Casa
 - ⋮ › Seguridad › **Mi Casa**: manda la gasolina, la batería, el alcance y dónde quedó el carro a la app de la casa (tableta y refri). Usa el mismo PIN de Mi Casa. Se manda cada 5 min con el OBD conectado y al apagar el carro.
 - Nueva app para el reloj: **MiCasaReloj.apk** (viene en la misma descarga). Tarjetas por cuarto con su foto: deslizas o giras el bisel y tocas para prender o apagar. Primera pantalla: la casita 3D con lo prendido. También alarma y "Me voy" (dos toques). La primera vez pide el PIN de Mi Casa.
