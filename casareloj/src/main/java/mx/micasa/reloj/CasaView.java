@@ -302,17 +302,44 @@ public class CasaView extends View {
         pastilla(c, est, w / 2f, h * .82f, h * .045f, fondo, prendido ? 0xFF2A1D0C : Color.WHITE);
     }
 
+    // Mismos colores que la app: verde desarmada, azul en casa, rojo fuera
+    static final int AZUL = 0xFF5AA2FF, ROJO_FUERA = 0xFFFF4D4D;
     int colorAlarma() {
         if (sonando) return ROJO;
-        switch (alarma) { case "away": return NARANJA; case "stay": return AMBAR; case "disarm": return VERDE; default: return GRIS; }
+        switch (alarma) { case "away": return ROJO_FUERA; case "stay": return AZUL; case "disarm": return VERDE; default: return GRIS; }
     }
+
+    // SOS: se mantiene presionado 3 segundos
+    final RectF sosRect = new RectF();
+    long sosIni = 0;
+    boolean enSos = false;
+    final Runnable sosTick = new Runnable() {
+        @Override public void run() {
+            if (sosIni == 0) return;
+            if (System.currentTimeMillis() - sosIni >= 3000) { sosIni = 0; invalidate(); act.mandarSos(); return; }
+            invalidate();
+            postDelayed(this, 40);
+        }
+    };
 
     void dibujarAlarma(Canvas c, int w, int h) {
         int col = colorAlarma();
+        long ahora = System.currentTimeMillis();
+        boolean parpadeo = sonando && (ahora / 500) % 2 == 0;
+        // Anillo que respira (rápido si está sonando)
+        double ritmo = sonando ? 250.0 : 520.0;
+        float b = (float) (0.5 + 0.5 * Math.sin(ahora / ritmo));
         p.setStyle(Paint.Style.FILL);
         p.setColor(col);
-        p.setAlpha(40);
+        p.setAlpha(sonando ? (parpadeo ? 90 : 30) : 34);
         c.drawCircle(w / 2f, h * .4f, w * .2f, p);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(w * .012f);
+        p.setAlpha((int) (60 + 150 * b));
+        c.drawCircle(w / 2f, h * .4f, w * (.205f + .025f * b), p);
+        p.setAlpha((int) (40 + 90 * (1 - b)));
+        c.drawCircle(w / 2f, h * .4f, w * (.165f + .015f * (1 - b)), p);
+        p.setStyle(Paint.Style.FILL);
         p.setAlpha(255);
         // escudo
         float cx = w / 2f, cy = h * .4f, s = w * .13f;
@@ -327,10 +354,33 @@ public class CasaView extends View {
         c.drawPath(esc, p);
         texto(c, "Alarma", w / 2f, h * .17f, h * .055f, GRIS, true);
         String est = sonando ? "¡SONANDO!" : alarma.equals("away") ? "Armada · Fuera" : alarma.equals("stay") ? "Armada · En casa" : alarma.equals("disarm") ? "Desarmada" : "Sin dato";
-        texto(c, est, w / 2f, h * .68f, h * .075f, col, true);
+        texto(c, est, w / 2f, h * .66f, h * .075f, col, true);
         boolean armada = sonando || alarma.equals("away") || alarma.equals("stay");
         String pie = confirmando(P_ALARMA) ? (armada ? "Toca otra vez para DESARMAR" : "Toca otra vez para ARMAR") : (armada ? "Dos toques: desarmar" : "Dos toques: armar (Fuera)");
-        texto(c, pie, w / 2f, h * .8f, h * .045f, confirmando(P_ALARMA) ? Color.WHITE : 0x99FFFFFF, confirmando(P_ALARMA));
+        texto(c, pie, w / 2f, h * .755f, h * .042f, confirmando(P_ALARMA) ? Color.WHITE : 0x99FFFFFF, confirmando(P_ALARMA));
+        // Botón SOS abajo, con barra que se llena mientras se mantiene presionado
+        float sw = w * .38f, sh = h * .095f, sx = w / 2f, sy = h * .865f;
+        sosRect.set(sx - sw / 2, sy - sh / 2, sx + sw / 2, sy + sh / 2);
+        float rad = sh / 2;
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0x33FF3B3B);
+        c.drawRoundRect(sosRect, rad, rad, p);
+        if (sosIni > 0) {
+            float f = Math.min(1f, (ahora - sosIni) / 3000f);
+            c.save();
+            c.clipRect(sosRect.left, sosRect.top, sosRect.left + sosRect.width() * f, sosRect.bottom);
+            p.setColor(ROJO);
+            c.drawRoundRect(sosRect, rad, rad, p);
+            c.restore();
+        }
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(w * .008f);
+        p.setColor(0xCCFF3B3B);
+        c.drawRoundRect(sosRect, rad, rad, p);
+        p.setStyle(Paint.Style.FILL);
+        texto(c, sosIni > 0 ? "Mantén… " + Math.max(1, (int) Math.ceil((3000 - (ahora - sosIni)) / 1000f)) : "SOS · mantén 3 s", sx, sy + sh * .17f, h * .045f, sosIni > 0 ? Color.WHITE : 0xFFFF6B6B, true);
+        // Mientras se ve esta pantalla, el anillo sigue respirando
+        if (pagina == P_ALARMA && arrastre == 0) postInvalidateDelayed(60);
     }
 
     void dibujarMeVoy(Canvas c, int w, int h) {
@@ -452,10 +502,12 @@ public class CasaView extends View {
             case MotionEvent.ACTION_DOWN:
                 if (anim != null) anim.cancel();
                 arrastre = 0; xIni = e.getX(); yIni = e.getY(); moviendo = false;
+                enSos = pagina == P_ALARMA && sosRect.contains(e.getX(), e.getY());
+                if (enSos) { sosIni = System.currentTimeMillis(); act.vibrar(new long[]{0, 30}); removeCallbacks(sosTick); post(sosTick); }
                 return true;
             case MotionEvent.ACTION_MOVE:
                 float dx = e.getX() - xIni;
-                if (!moviendo && Math.abs(dx) > slop) moviendo = true;
+                if (!moviendo && Math.abs(dx) > slop) { moviendo = true; if (sosIni > 0) { sosIni = 0; invalidate(); } }
                 if (moviendo) {
                     if ((pagina == 0 && dx > 0) || (pagina == PAGINAS - 1 && dx < 0)) dx *= .3f;
                     arrastre = dx;
@@ -466,6 +518,7 @@ public class CasaView extends View {
                 vt.computeCurrentVelocity(1000);
                 float v = vt.getXVelocity();
                 vt.recycle(); vt = null;
+                if (enSos) { enSos = false; if (sosIni > 0) { sosIni = 0; invalidate(); } if (!moviendo) return true; }
                 if (moviendo) {
                     int dir = 0;
                     if (arrastre < -getWidth() * .22f || v < -900) dir = 1;

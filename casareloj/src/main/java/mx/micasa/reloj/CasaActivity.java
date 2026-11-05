@@ -142,6 +142,19 @@ public class CasaActivity extends Activity {
         });
     }
 
+    // SOS: hace sonar la alarma de inmediato
+    void mandarSos() {
+        final String p = pin();
+        vibrar(new long[]{0, 200, 100, 200});
+        red.execute(() -> {
+            Resp r = http("POST", "casa?action=sos", "{\"on\":true,\"who\":\"Reloj\"}", p);
+            main.post(() -> {
+                if (r.json != null && r.json.optBoolean("ok")) { vista.ponerAlarma(vista.alarma, true); vista.aviso("SOS activado"); }
+                else vista.aviso(r.json != null ? r.json.optString("error", "No respondió") : r.error);
+            });
+        });
+    }
+
     void meVoy() {
         final String p = pin();
         vibrar(new long[]{0, 40, 80, 40});
