@@ -39,6 +39,7 @@ public class CasaView extends View {
         {"sala", "Sala", 36.3, 42, 23.9, 30},
         {"porton", "Portón", 0.5, 33, 6.2, 52},
         {"puerta", "Puerta", 9.3, 25, 4.2, 32},
+        {"spots", "Spots de la fachada", 0, 0, 0, 0},
         {"cocina_focos", "Cocina", 29.5, 3, 11, 17},
         {"cochera", "Cochera", 7, 50, 29, 36},
         {"sala_focos", "Focos de la sala", 36.3, 72, 23.9, 13},
@@ -54,7 +55,7 @@ public class CasaView extends View {
         {"rec_azul", "Cuarto azul", 62.2, 4, 13.8, 35},
     };
     static final int N = CUARTOS.length;
-    static final int P_CASA = 0, P_ALARMA = N + 1, P_MEVOY = N + 2, PAGINAS = N + 3;
+    static final int P_CASA = 0, P_FACHADA = N + 1, P_ALARMA = N + 2, P_MEVOY = N + 3, PAGINAS = N + 4;
 
     static final int AMBAR = 0xFFFFC15E, VERDE = 0xFF6FDCA6, NARANJA = 0xFFFF8F48, ROJO = 0xFFFF3B3B, GRIS = 0xFF8AA0C2, TINTA = 0xFFE7EEFA;
 
@@ -194,6 +195,7 @@ public class CasaView extends View {
 
     void dibujarPagina(Canvas c, int i, int w, int h) {
         if (i == P_CASA) dibujarCasa(c, w, h);
+        else if (i == P_FACHADA) dibujarFachada(c, w, h);
         else if (i == P_ALARMA) dibujarAlarma(c, w, h);
         else if (i == P_MEVOY) dibujarMeVoy(c, w, h);
         else dibujarCuarto(c, i - 1, w, h);
@@ -293,6 +295,7 @@ public class CasaView extends View {
         if (on == null) est = "SIN APARATO";
         else if (z.equals("porton")) est = prendido ? "ABIERTO" : "CERRADO";
         else if (z.equals("puerta")) est = prendido ? "ABIERTA" : "CERRADA";
+        else if (z.equals("spots")) est = prendido ? "PRENDIDOS" : "APAGADOS";
         else est = prendido ? "PRENDIDA" : "APAGADA";
         int fondo = on == null ? 0x33FFFFFF : prendido ? (puerta ? NARANJA : AMBAR) : 0x44FFFFFF;
         pastilla(c, est, w / 2f, h * .82f, h * .045f, fondo, prendido ? 0xFF2A1D0C : Color.WHITE);
@@ -347,6 +350,37 @@ public class CasaView extends View {
         c.drawLine(cx - s, cy, cx - s * .5f, cy + s * .5f, p);
         texto(c, "Me voy", w / 2f, h * .76f, h * .085f, Color.WHITE, true);
         texto(c, confirmando(P_MEVOY) ? "Toca otra vez para confirmar" : "Apaga luces, cierra y arma", w / 2f, h * .84f, h * .043f, confirmando(P_MEVOY) ? Color.WHITE : 0x99FFFFFF, confirmando(P_MEVOY));
+    }
+
+    // ---------------- fachada: foto de día o de noche, con el portón como esté ----------------
+    final RectF fachRect = new RectF();
+    Bitmap fotoFachada(String n) {
+        String k = "f_" + n;
+        Bitmap b = fotos.get(k);
+        if (b == null) {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inPreferredConfig = Bitmap.Config.RGB_565;
+            try (InputStream in = getContext().getAssets().open("fachada/" + n + ".jpg")) { b = BitmapFactory.decodeStream(in, null, o); } catch (Exception ignored) { }
+            if (b != null) fotos.put(k, b);
+        }
+        return b;
+    }
+
+    void dibujarFachada(Canvas c, int w, int h) {
+        int hora = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        boolean dia = hora >= 7 && hora < 18;
+        boolean abierto = Boolean.TRUE.equals(estado.get("porton"));
+        boolean spots = Boolean.TRUE.equals(estado.get("spots"));
+        String n = (dia ? "dia" : "noche") + (abierto ? "_a" : "") + (!dia && !spots ? "_off" : "");
+        Bitmap b = fotoFachada(n);
+        texto(c, "Fachada", w / 2f, h * .2f, h * .06f, TINTA, true);
+        if (b != null) {
+            float fw = w * .96f, fh = fw * b.getHeight() / b.getWidth();
+            fachRect.set((w - fw) / 2f, h * .47f - fh / 2f, (w + fw) / 2f, h * .47f + fh / 2f);
+            c.drawBitmap(b, null, fachRect, img);
+        }
+        texto(c, "Portón " + (abierto ? "abierto" : "cerrado") + " · Spots " + (spots ? "prendidos" : "apagados"), w / 2f, h * .8f, h * .042f, abierto ? NARANJA : GRIS, true);
+        texto(c, "Toca el portón, la puerta o el muro", w / 2f, h * .87f, h * .038f, 0x88FFFFFF, false);
     }
 
     void dibujarAviso(Canvas c, int w, int h) {
@@ -458,6 +492,15 @@ public class CasaView extends View {
                 if (mejor != null) { alternar(mejor); return; }
             }
             animarA(1);
+            return;
+        }
+        if (pagina == P_FACHADA) {
+            if (fachRect.contains(x, y)) {
+                float px = (x - fachRect.left) / fachRect.width() * 100f, py = (y - fachRect.top) / fachRect.height() * 100f;
+                if (px >= 55 && px <= 92 && py >= 40 && py <= 78) { alternar("porton"); return; }
+                if (px >= 40 && px <= 51 && py >= 39 && py <= 78) { alternar("puerta"); return; }
+                if (px >= 5 && px <= 34 && py >= 34 && py <= 73) { alternar("spots"); return; }
+            }
             return;
         }
         if (pagina == P_ALARMA) {
