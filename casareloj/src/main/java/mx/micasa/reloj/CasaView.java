@@ -27,10 +27,9 @@ import java.util.Map;
 
 /**
  * Pantallas del reloj, una por página; se cambia deslizando de lado o girando el bisel:
- *   0      la casita 3D con lo que está prendido (tocar un cuarto lo prende/apaga)
- *   1..n   una tarjeta por cuarto con su foto (tocar = prender/apagar, abrir/cerrar)
- *   n+1    alarma (dos toques para armar o desarmar)
- *   n+2    "Me voy" (dos toques)
+ *   casa 3D · fachada · cámaras en vivo · alarma · modo de la casa
+ *   una tarjeta por cuarto con su foto (tocar = prender/apagar, abrir/cerrar)
+ *   "Llegando" y "Me voy" (dos toques)
  */
 public class CasaView extends View {
 
@@ -55,8 +54,22 @@ public class CasaView extends View {
         {"rec_azul", "Cuarto azul", 62.2, 4, 13.8, 35},
     };
     static final int N = CUARTOS.length;
-    // Orden: casa 3D, fachada y alarma primero; luego los cuartos y al final Me voy
-    static final int P_CASA = 0, P_FACHADA = 1, P_ALARMA = 2, P_CUARTO1 = 3, P_MEVOY = N + 3, PAGINAS = N + 4;
+    // Orden: casa 3D, fachada, cámaras, alarma y modo primero; luego los cuartos y al final Llegando y Me voy
+    static final int P_CASA = 0, P_FACHADA = 1, P_CAM = 2, P_ALARMA = 3, P_MODO = 4, P_CUARTO1 = 5,
+        P_LLEGANDO = N + 5, P_MEVOY = N + 6, PAGINAS = N + 7;
+
+    // Cámaras que se ven en el reloj (nombre del stream en la Raspberry, nombre bonito)
+    static final String[][] CAMS = {{"cam1", "Derecha"}, {"cochera", "Cochera"}};
+    int cam = 0;
+    Bitmap camFoto;
+    long camHora = 0;
+    String camError = null;
+
+    // Modo de la casa (lo mismo que en la app)
+    static final String[] MODOS_ID = {"auto", "casa", "fuera", "noche", "vacaciones", "nomolestar"};
+    static final String[] MODOS_NOM = {"Automático", "En casa", "Fuera", "Noche", "Vacaciones", "No molestar"};
+    String modoSel = null, modoNom = null, modoPor = null;
+    long modoLeido = 0;
 
     static final int AMBAR = 0xFFFFC15E, VERDE = 0xFF6FDCA6, NARANJA = 0xFFFF8F48, ROJO = 0xFFFF3B3B, GRIS = 0xFF8AA0C2, TINTA = 0xFFE7EEFA;
 
@@ -197,7 +210,10 @@ public class CasaView extends View {
     void dibujarPagina(Canvas c, int i, int w, int h) {
         if (i == P_CASA) dibujarCasa(c, w, h);
         else if (i == P_FACHADA) dibujarFachada(c, w, h);
+        else if (i == P_CAM) dibujarCam(c, w, h);
         else if (i == P_ALARMA) dibujarAlarma(c, w, h);
+        else if (i == P_MODO) dibujarModo(c, w, h);
+        else if (i == P_LLEGANDO) dibujarLlegando(c, w, h);
         else if (i == P_MEVOY) dibujarMeVoy(c, w, h);
         else dibujarCuarto(c, i - P_CUARTO1, w, h);
     }
@@ -309,19 +325,6 @@ public class CasaView extends View {
         switch (alarma) { case "away": return ROJO_FUERA; case "stay": return AZUL; case "disarm": return VERDE; default: return GRIS; }
     }
 
-    // SOS: se mantiene presionado 3 segundos
-    final RectF sosRect = new RectF();
-    long sosIni = 0;
-    boolean enSos = false;
-    final Runnable sosTick = new Runnable() {
-        @Override public void run() {
-            if (sosIni == 0) return;
-            if (System.currentTimeMillis() - sosIni >= 3000) { sosIni = 0; invalidate(); act.mandarSos(); return; }
-            invalidate();
-            postDelayed(this, 40);
-        }
-    };
-
     void dibujarAlarma(Canvas c, int w, int h) {
         int col = colorAlarma();
         long ahora = System.currentTimeMillis();
@@ -358,27 +361,6 @@ public class CasaView extends View {
         boolean armada = sonando || alarma.equals("away") || alarma.equals("stay");
         String pie = confirmando(P_ALARMA) ? (armada ? "Toca otra vez para DESARMAR" : "Toca otra vez para ARMAR") : (armada ? "Dos toques: desarmar" : "Dos toques: armar (Fuera)");
         texto(c, pie, w / 2f, h * .755f, h * .042f, confirmando(P_ALARMA) ? Color.WHITE : 0x99FFFFFF, confirmando(P_ALARMA));
-        // Botón SOS abajo, con barra que se llena mientras se mantiene presionado
-        float sw = w * .38f, sh = h * .095f, sx = w / 2f, sy = h * .865f;
-        sosRect.set(sx - sw / 2, sy - sh / 2, sx + sw / 2, sy + sh / 2);
-        float rad = sh / 2;
-        p.setStyle(Paint.Style.FILL);
-        p.setColor(0x33FF3B3B);
-        c.drawRoundRect(sosRect, rad, rad, p);
-        if (sosIni > 0) {
-            float f = Math.min(1f, (ahora - sosIni) / 3000f);
-            c.save();
-            c.clipRect(sosRect.left, sosRect.top, sosRect.left + sosRect.width() * f, sosRect.bottom);
-            p.setColor(ROJO);
-            c.drawRoundRect(sosRect, rad, rad, p);
-            c.restore();
-        }
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(w * .008f);
-        p.setColor(0xCCFF3B3B);
-        c.drawRoundRect(sosRect, rad, rad, p);
-        p.setStyle(Paint.Style.FILL);
-        texto(c, sosIni > 0 ? "Mantén… " + Math.max(1, (int) Math.ceil((3000 - (ahora - sosIni)) / 1000f)) : "SOS · mantén 3 s", sx, sy + sh * .17f, h * .045f, sosIni > 0 ? Color.WHITE : 0xFFFF6B6B, true);
         // Mientras se ve esta pantalla, el anillo sigue respirando
         if (pagina == P_ALARMA && arrastre == 0) postInvalidateDelayed(60);
     }
@@ -401,6 +383,90 @@ public class CasaView extends View {
         c.drawLine(cx - s, cy, cx - s * .5f, cy + s * .5f, p);
         texto(c, "Me voy", w / 2f, h * .76f, h * .085f, Color.WHITE, true);
         texto(c, confirmando(P_MEVOY) ? "Toca otra vez para confirmar" : "Apaga luces, cierra y arma", w / 2f, h * .84f, h * .043f, confirmando(P_MEVOY) ? Color.WHITE : 0x99FFFFFF, confirmando(P_MEVOY));
+    }
+
+    // ---------------- cámaras en vivo (una foto cada segundo desde la Raspberry) ----------------
+    void ponerFoto(Bitmap b) { if (b != null) { camFoto = b; camHora = System.currentTimeMillis(); camError = null; } invalidate(); }
+    void errorFoto(String e) { camError = e; invalidate(); }
+
+    void dibujarCam(Canvas c, int w, int h) {
+        texto(c, "Cámara " + CAMS[cam][1], w / 2f, h * .2f, h * .06f, TINTA, true);
+        float fw = w * .98f, fh = fw * 9f / 16f;
+        if (camFoto != null) fh = fw * camFoto.getHeight() / camFoto.getWidth();
+        RectF r = new RectF((w - fw) / 2f, h * .5f - fh / 2f, (w + fw) / 2f, h * .5f + fh / 2f);
+        if (camFoto != null) c.drawBitmap(camFoto, null, r, img);
+        else {
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFF101A2C);
+            c.drawRect(r, p);
+            texto(c, camError != null ? camError : "Cargando…", w / 2f, h * .51f, h * .045f, camError != null ? NARANJA : GRIS, false);
+        }
+        long edad = camHora == 0 ? 0 : System.currentTimeMillis() - camHora;
+        boolean vivo = camFoto != null && edad < 5000;
+        String est = camFoto == null ? "" : vivo ? "● EN VIVO" : "Pausada · hace " + (edad / 1000) + " s";
+        if (!est.isEmpty()) texto(c, est, w / 2f, h * .5f + fh / 2f + h * .065f, h * .042f, vivo ? ROJO : GRIS, true);
+        // puntitos de cuál cámara
+        float y = h * .86f;
+        for (int i = 0; i < CAMS.length; i++) {
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(i == cam ? TINTA : 0x55FFFFFF);
+            c.drawCircle(w / 2f + (i - (CAMS.length - 1) / 2f) * w * .05f, y, w * .012f, p);
+        }
+        texto(c, "Toca para cambiar", w / 2f, h * .925f, h * .036f, 0x88FFFFFF, false);
+    }
+
+    // ---------------- modo de la casa ----------------
+    void ponerModo(String sel, String nom, String por) { modoSel = sel; modoNom = nom; modoPor = por; modoLeido = System.currentTimeMillis(); invalidate(); }
+
+    static int colorModo(String m) {
+        if (m == null) return GRIS;
+        switch (m) {
+            case "casa": return VERDE; case "fuera": return ROJO_FUERA; case "noche": return AZUL;
+            case "vacaciones": return AMBAR; case "nomolestar": return 0xFFB58CFF; default: return TINTA;
+        }
+    }
+
+    void dibujarModo(Canvas c, int w, int h) {
+        texto(c, "Modo de la casa", w / 2f, h * .2f, h * .055f, GRIS, true);
+        String nomSel = "--";
+        for (int k = 0; k < MODOS_ID.length; k++) if (MODOS_ID[k].equals(modoSel)) nomSel = MODOS_NOM[k];
+        int col = colorModo(modoSel);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(w * .014f);
+        p.setColor(col);
+        p.setAlpha(170);
+        c.drawCircle(w / 2f, h * .44f, w * .2f, p);
+        p.setAlpha(255);
+        texto(c, nomSel, w / 2f, h * .465f, nomSel.length() > 9 ? h * .065f : h * .08f, col, true);
+        String sub;
+        if (modoSel == null) sub = "Leyendo…";
+        else if ("auto".equals(modoSel)) sub = modoNom != null ? "Ahora: " + modoNom : "Elige solo según la hora y la alarma";
+        else sub = modoNom != null ? "Avisos según: " + modoNom : "Guardando…";
+        texto(c, sub, w / 2f, h * .74f, h * .042f, 0xCCFFFFFF, false);
+        texto(c, "Toca para cambiar", w / 2f, h * .84f, h * .04f, 0x88FFFFFF, false);
+    }
+
+    // ---------------- Llegando ----------------
+    void dibujarLlegando(Canvas c, int w, int h) {
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0xFF6FDCA6);
+        c.drawCircle(w / 2f, h * .42f, w * .2f, p);
+        // casita con flecha que entra
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(w * .02f);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        p.setStrokeJoin(Paint.Join.ROUND);
+        p.setColor(0xFF06261A);
+        float cx = w / 2f, cy = h * .43f, s = w * .085f;
+        android.graphics.Path casa = new android.graphics.Path();
+        casa.moveTo(cx - s, cy - s * .1f); casa.lineTo(cx, cy - s); casa.lineTo(cx + s, cy - s * .1f);
+        casa.moveTo(cx - s * .75f, cy - s * .3f); casa.lineTo(cx - s * .75f, cy + s * .8f); casa.lineTo(cx + s * .75f, cy + s * .8f); casa.lineTo(cx + s * .75f, cy - s * .3f);
+        c.drawPath(casa, p);
+        c.drawLine(cx - s * .3f, cy + s * .3f, cx + s * .25f, cy + s * .3f, p);
+        c.drawLine(cx + s * .25f, cy + s * .3f, cx, cy + s * .05f, p);
+        c.drawLine(cx + s * .25f, cy + s * .3f, cx, cy + s * .55f, p);
+        texto(c, "Llegando", w / 2f, h * .76f, h * .085f, Color.WHITE, true);
+        texto(c, confirmando(P_LLEGANDO) ? "Toca otra vez para confirmar" : "Abre el portón y prende las luces", w / 2f, h * .84f, h * .041f, confirmando(P_LLEGANDO) ? Color.WHITE : 0x99FFFFFF, confirmando(P_LLEGANDO));
     }
 
     // ---------------- fachada: foto de día o de noche, con el portón como esté ----------------
@@ -502,12 +568,10 @@ public class CasaView extends View {
             case MotionEvent.ACTION_DOWN:
                 if (anim != null) anim.cancel();
                 arrastre = 0; xIni = e.getX(); yIni = e.getY(); moviendo = false;
-                enSos = pagina == P_ALARMA && sosRect.contains(e.getX(), e.getY());
-                if (enSos) { sosIni = System.currentTimeMillis(); act.vibrar(new long[]{0, 30}); removeCallbacks(sosTick); post(sosTick); }
                 return true;
             case MotionEvent.ACTION_MOVE:
                 float dx = e.getX() - xIni;
-                if (!moviendo && Math.abs(dx) > slop) { moviendo = true; if (sosIni > 0) { sosIni = 0; invalidate(); } }
+                if (!moviendo && Math.abs(dx) > slop) moviendo = true;
                 if (moviendo) {
                     if ((pagina == 0 && dx > 0) || (pagina == PAGINAS - 1 && dx < 0)) dx *= .3f;
                     arrastre = dx;
@@ -518,7 +582,6 @@ public class CasaView extends View {
                 vt.computeCurrentVelocity(1000);
                 float v = vt.getXVelocity();
                 vt.recycle(); vt = null;
-                if (enSos) { enSos = false; if (sosIni > 0) { sosIni = 0; invalidate(); } if (!moviendo) return true; }
                 if (moviendo) {
                     int dir = 0;
                     if (arrastre < -getWidth() * .22f || v < -900) dir = 1;
@@ -561,6 +624,29 @@ public class CasaView extends View {
             boolean armada = sonando || alarma.equals("away") || alarma.equals("stay");
             if (confirmando(P_ALARMA)) { confirmarPagina = -1; act.mandarAlarma(armada ? "disarm" : "away"); }
             else { confirmarPagina = P_ALARMA; confirmarHasta = System.currentTimeMillis() + 3000; postInvalidateDelayed(3100); }
+            invalidate();
+            return;
+        }
+        if (pagina == P_CAM) {
+            cam = (cam + 1) % CAMS.length;
+            camFoto = null; camHora = 0; camError = null;
+            act.vibrar(new long[]{0, 25});
+            act.pedirFoto();
+            invalidate();
+            return;
+        }
+        if (pagina == P_MODO) {
+            int i = 0;
+            for (int k = 0; k < MODOS_ID.length; k++) if (MODOS_ID[k].equals(modoSel)) i = k;
+            String nuevo = MODOS_ID[(i + 1) % MODOS_ID.length];
+            modoSel = nuevo; modoNom = null;
+            act.mandarModo(nuevo);
+            invalidate();
+            return;
+        }
+        if (pagina == P_LLEGANDO) {
+            if (confirmando(P_LLEGANDO)) { confirmarPagina = -1; act.llegando(); }
+            else { confirmarPagina = P_LLEGANDO; confirmarHasta = System.currentTimeMillis() + 3000; postInvalidateDelayed(3100); }
             invalidate();
             return;
         }
