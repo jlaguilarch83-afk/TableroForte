@@ -30,7 +30,7 @@ import java.util.concurrent.Executors;
 public class CasaActivity extends Activity {
 
     static final String BASE = "https://micasa-jl.jl-aguilarch83.workers.dev/api/";
-    static final long CADA_MS = 6000;
+    static final long CADA_MS = 15000;
 
     final Handler main = new Handler(Looper.getMainLooper());
     final ExecutorService red = Executors.newSingleThreadExecutor();
@@ -40,6 +40,8 @@ public class CasaActivity extends Activity {
     SharedPreferences prefs;
     boolean activa = false;
     boolean vibroAlarma = false;
+    // Smart Life (Tuya) se lee una sola vez al abrir el reloj: cada lectura gasta cuota de la cuenta de prueba
+    boolean leerTuya = true;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -54,6 +56,7 @@ public class CasaActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activa = true;
+        leerTuya = true;
         vista.requestFocus();
         main.removeCallbacks(ciclo);
         main.post(ciclo);
@@ -87,6 +90,7 @@ public class CasaActivity extends Activity {
 
     void guardarPin(String p) {
         prefs.edit().putString("pin", p).apply();
+        leerTuya = true;
         main.removeCallbacks(ciclo);
         main.post(ciclo);
     }
@@ -102,11 +106,13 @@ public class CasaActivity extends Activity {
     void leerEstado() {
         if (pin().isEmpty()) { vista.pedirPin(); return; }
         final String p = pin();
+        final boolean conTuya = leerTuya;
+        leerTuya = false;
         red.execute(() -> {
-            Resp r = http("GET", "estado?lite=1", null, p);
+            Resp r = http("GET", "estado?lite=1" + (conTuya ? "&tuya=1" : ""), null, p);
             main.post(() -> {
-                if (r.code == 401) { prefs.edit().remove("pin").apply(); vista.pinMalo(); return; }
-                if (r.json == null || !r.json.optBoolean("ok")) { vista.sinConexion(r.error); return; }
+                if (r.code == 401) { if (conTuya) leerTuya = true; prefs.edit().remove("pin").apply(); vista.pinMalo(); return; }
+                if (r.json == null || !r.json.optBoolean("ok")) { if (conTuya) leerTuya = true; vista.sinConexion(r.error); return; }
                 JSONObject luces = r.json.optJSONObject("luces");
                 if (luces != null) {
                     Iterator<String> it = luces.keys();
