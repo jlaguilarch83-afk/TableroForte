@@ -429,7 +429,7 @@ public class CasaView extends View {
     void ponerTele(boolean on) { teleOn = on; invalidate(); }
 
     void dibujarTele(Canvas c, int w, int h) {
-        texto(c, "Tele", w / 2f, h * .17f, h * .06f, TINTA, true);
+        texto(c, teleOn ? "Tele · encendida" : "Tele", w / 2f, h * .17f, h * .055f, teleOn ? AZUL : TINTA, true);
         texto(c, "VOL", w * .19f, h * .525f, h * .036f, GRIS, true);
         texto(c, "CH", w * .81f, h * .525f, h * .036f, GRIS, true);
         boolean flash = System.currentTimeMillis() - teleToqueT < 250;
@@ -447,7 +447,6 @@ public class CasaView extends View {
                 c.drawArc(new RectF(cx - a, cy - a, cx + a, cy + a), -50, 280, false, p);
             } else { String l = (String) b[1]; float t = l.length() > 1 ? r * .42f : r * .9f; texto(c, l, cx, cy + t * .36f, t, TINTA, true); }
         }
-        texto(c, teleOn ? "Encendida" : "Toca para encender", w / 2f, h * .40f + w * .135f + h * .055f, h * .034f, teleOn ? AZUL : 0x99FFFFFF, false);
         if (flash) postInvalidateDelayed(260);
     }
 
