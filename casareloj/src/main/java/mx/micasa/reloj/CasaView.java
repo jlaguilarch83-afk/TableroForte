@@ -54,9 +54,18 @@ public class CasaView extends View {
         {"rec_azul", "Cuarto azul", 62.2, 4, 13.8, 35},
     };
     static final int N = CUARTOS.length;
-    // Orden: casa 3D, fachada, cámaras, alarma y modo primero; luego los cuartos y al final Llegando y Me voy
-    static final int P_CASA = 0, P_FACHADA = 1, P_CAM = 2, P_ALARMA = 3, P_MODO = 4, P_CUARTO1 = 5,
-        P_LLEGANDO = N + 5, P_MEVOY = N + 6, PAGINAS = N + 7;
+    // Orden: casa 3D, fachada, cámaras, tele, alarma y modo primero; luego los cuartos y al final Llegando y Me voy
+    static final int P_CASA = 0, P_FACHADA = 1, P_CAM = 2, P_TELE = 3, P_ALARMA = 4, P_MODO = 5, P_CUARTO1 = 6,
+        P_LLEGANDO = N + 6, P_MEVOY = N + 7, PAGINAS = N + 8;
+
+    // Control de la tele (Samsung por SmartThings): botón -> comando, y dónde está en la pantalla (en % del reloj)
+    static final Object[][] TELE = {
+        {"pow", "", .50f, .40f, .135f}, {"vol_up", "+", .19f, .40f, .095f}, {"vol_down", "−", .19f, .63f, .095f},
+        {"ch_up", "▲", .81f, .40f, .095f}, {"ch_down", "▼", .81f, .63f, .095f}, {"MUTE", "Mudo", .50f, .66f, .085f},
+        {"HOME", "Inicio", .36f, .84f, .075f}, {"BACK", "Atrás", .64f, .84f, .075f}};
+    boolean teleOn = false;
+    int teleToque = -1;
+    long teleToqueT = 0;
 
     // Cámaras que se ven en el reloj (nombre del stream en la Raspberry, nombre bonito)
     static final String[][] CAMS = {{"cam1", "Derecha"}, {"cochera", "Cochera"}};
@@ -211,6 +220,7 @@ public class CasaView extends View {
         if (i == P_CASA) dibujarCasa(c, w, h);
         else if (i == P_FACHADA) dibujarFachada(c, w, h);
         else if (i == P_CAM) dibujarCam(c, w, h);
+        else if (i == P_TELE) dibujarTele(c, w, h);
         else if (i == P_ALARMA) dibujarAlarma(c, w, h);
         else if (i == P_MODO) dibujarModo(c, w, h);
         else if (i == P_LLEGANDO) dibujarLlegando(c, w, h);
@@ -413,6 +423,49 @@ public class CasaView extends View {
             c.drawCircle(w / 2f + (i - (CAMS.length - 1) / 2f) * w * .05f, y, w * .012f, p);
         }
         texto(c, "Toca para cambiar", w / 2f, h * .925f, h * .036f, 0x88FFFFFF, false);
+    }
+
+    // ---------------- control de la tele ----------------
+    void ponerTele(boolean on) { teleOn = on; invalidate(); }
+
+    void dibujarTele(Canvas c, int w, int h) {
+        texto(c, "Tele", w / 2f, h * .17f, h * .06f, TINTA, true);
+        texto(c, "VOL", w * .19f, h * .525f, h * .036f, GRIS, true);
+        texto(c, "CH", w * .81f, h * .525f, h * .036f, GRIS, true);
+        boolean flash = System.currentTimeMillis() - teleToqueT < 250;
+        for (int i = 0; i < TELE.length; i++) {
+            Object[] b = TELE[i];
+            float cx = w * (Float) b[2], cy = h * (Float) b[3], r = w * (Float) b[4];
+            boolean pow = "pow".equals(b[0]), apretado = flash && teleToque == i;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(pow ? (teleOn ? 0xFF2F7DF6 : 0xFF2A3348) : apretado ? 0xFF3C4A66 : 0xFF1C2436);
+            c.drawCircle(cx, cy, apretado ? r * .92f : r, p);
+            if (pow) {
+                p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(w * .014f); p.setStrokeCap(Paint.Cap.ROUND); p.setColor(Color.WHITE);
+                float a = r * .45f;
+                c.drawLine(cx, cy - a * 1.15f, cx, cy - a * .15f, p);
+                c.drawArc(new RectF(cx - a, cy - a, cx + a, cy + a), -50, 280, false, p);
+            } else { String l = (String) b[1]; float t = l.length() > 1 ? r * .42f : r * .9f; texto(c, l, cx, cy + t * .36f, t, TINTA, true); }
+        }
+        texto(c, teleOn ? "Encendida" : "Toca para encender", w / 2f, h * .40f + w * .135f + h * .055f, h * .034f, teleOn ? AZUL : 0x99FFFFFF, false);
+        if (flash) postInvalidateDelayed(260);
+    }
+
+    boolean tocarTele(float x, float y) {
+        int w = getWidth(), h = getHeight();
+        for (int i = 0; i < TELE.length; i++) {
+            Object[] b = TELE[i];
+            float cx = w * (Float) b[2], cy = h * (Float) b[3], r = w * (Float) b[4] * 1.25f;
+            if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) {
+                teleToque = i; teleToqueT = System.currentTimeMillis();
+                String k = (String) b[0];
+                if ("pow".equals(k)) { k = teleOn ? "off" : "on"; teleOn = !teleOn; }
+                act.mandarTele(k);
+                invalidate();
+                return true;
+            }
+        }
+        return false;
     }
 
     // ---------------- modo de la casa ----------------
@@ -627,6 +680,7 @@ public class CasaView extends View {
             invalidate();
             return;
         }
+        if (pagina == P_TELE) { tocarTele(x, y); return; }
         if (pagina == P_CAM) {
             cam = (cam + 1) % CAMS.length;
             camFoto = null; camHora = 0; camError = null;

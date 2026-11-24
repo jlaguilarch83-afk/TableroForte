@@ -162,6 +162,7 @@ public class CasaActivity extends Activity {
             if (!activa) return;
             if (vista.pagina == CasaView.P_CAM && vista.arrastre == 0) pedirFoto();
             if (vista.pagina == CasaView.P_MODO && System.currentTimeMillis() - vista.modoLeido > 20000) leerModo();
+            if (vista.pagina == CasaView.P_TELE && System.currentTimeMillis() - teleLeida > 30000) leerTele();
             main.postDelayed(this, 900);
         }
     };
@@ -191,6 +192,31 @@ public class CasaActivity extends Activity {
                 if (cual != vista.cam) return;            // ya cambió de cámara
                 if (bf != null) vista.ponerFoto(bf);
                 else vista.errorFoto(r.code == 404 ? "La Raspberry no está conectada" : r.code == 401 ? "PIN incorrecto" : "La cámara no contestó");
+            });
+        });
+    }
+
+    // ---- Tele (Samsung por SmartThings) ----
+    long teleLeida = 0;
+    void leerTele() {
+        if (pin().isEmpty()) return;
+        teleLeida = System.currentTimeMillis();
+        final String p = pin();
+        red.execute(() -> {
+            Resp r = http("GET", "st?action=tvstatus", null, p);
+            main.post(() -> { if (r.json != null && r.json.optBoolean("ok")) vista.ponerTele(r.json.optBoolean("on")); });
+        });
+    }
+    void mandarTele(final String k) {
+        final String p = pin();
+        vibrar(new long[]{0, 18});
+        red.execute(() -> {
+            Resp r = http("POST", "st?action=tv", "{\"c\":\"" + k + "\"}", p);
+            main.post(() -> {
+                if (r.json == null || !r.json.optBoolean("ok")) {
+                    vista.aviso(r.json != null ? r.json.optString("error", "La tele no contestó") : r.error);
+                    if ("on".equals(k) || "off".equals(k)) vista.ponerTele(!"on".equals(k));
+                }
             });
         });
     }
