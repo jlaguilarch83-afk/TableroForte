@@ -62,6 +62,7 @@ public class CasaActivity extends Activity {
         main.post(ciclo);
         main.removeCallbacks(camCiclo);
         main.post(camCiclo);
+        Fondo.aplicar(this);
     }
 
     // El bisel manda sus giros aquí aunque la vista no tenga el foco
@@ -163,6 +164,7 @@ public class CasaActivity extends Activity {
             if (vista.pagina == CasaView.P_CAM && vista.arrastre == 0) pedirFoto();
             if (vista.pagina == CasaView.P_MODO && System.currentTimeMillis() - vista.modoLeido > 20000) leerModo();
             if (vista.pagina == CasaView.P_TELE && System.currentTimeMillis() - teleLeida > 30000) leerTele();
+            if (vista.pagina == CasaView.P_RADAR && System.currentTimeMillis() - radarLeido > 3500) leerRadar();
             main.postDelayed(this, 900);
         }
     };
@@ -194,6 +196,113 @@ public class CasaActivity extends Activity {
                 else vista.errorFoto(r.code == 404 ? "La Raspberry no está conectada" : r.code == 401 ? "PIN incorrecto" : "La cámara no contestó");
             });
         });
+    }
+
+    // ---- Voz: el reloj dicta y Mi Casa entiende la frase (igual que el bot de Telegram) ----
+    static final int VOZ = 7, PERMISOS = 8;
+    void escuchar() {
+        try {
+            android.content.Intent i = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "es-MX");
+            i.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "¿Qué hago?");
+            startActivityForResult(i, VOZ);
+        } catch (Exception e) { vista.aviso("Este reloj no tiene dictado"); }
+    }
+    @Override
+    protected void onActivityResult(int req, int res, android.content.Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != VOZ || res != RESULT_OK || data == null) return;
+        java.util.ArrayList<String> r = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+        if (r != null && !r.isEmpty()) enviarVoz(r.get(0));
+    }
+    void enviarVoz(final String texto) {
+        final String p = pin();
+        vista.vozMandando(texto);
+        red.execute(() -> {
+            JSONObject b = new JSONObject();
+            try { b.put("texto", texto); b.put("quien", "reloj"); } catch (Exception ignored) { }
+            Resp r = http("POST", "voz", b.toString(), p);
+            main.post(() -> {
+                boolean ok = r.json != null && r.json.optBoolean("ok");
+                vista.ponerVoz(texto, r.json != null ? r.json.optString("respuesta", "Listo") : r.error, ok);
+                vibrar(ok ? new long[]{0, 30, 60, 30} : new long[]{0, 200});
+                main.postDelayed(this::leerEstado, 2500);
+            });
+        });
+    }
+
+    // ---- Perilla de brillo ----
+    void mandarBrillo(final String zona, final int pct) {
+        final String p = pin();
+        red.execute(() -> {
+            Resp r = http("POST", "casa?action=brillo", "{\"zone\":\"" + zona + "\",\"pct\":" + pct + ",\"who\":\"Reloj\"}", p);
+            main.post(() -> { if (r.json == null || !r.json.optBoolean("ok")) vista.aviso(r.json != null ? r.json.optString("error", "No se pudo") : r.error); else vista.listo(zona, true); });
+        });
+    }
+
+    // ---- Radar: sensores (por la Raspberry, gratis) y personas que vio una cámara ----
+    long radarLeido = 0;
+    void leerRadar() {
+        radarLeido = System.currentTimeMillis();
+        leerEstado();
+        final String p = pin();
+        red.execute(() -> {
+            Resp r = http("GET", "cam/estado", null, p);
+            main.post(() -> {
+                JSONObject a = r.json != null ? r.json.optJSONObject("aviso") : null;
+                if (a != null) vista.ponerPersona(a.optString("camara", a.optString("cam", "")), a.optString("quien", ""), a.optLong("ts", System.currentTimeMillis()));
+            });
+        });
+    }
+
+    // ---- Funciones del reloj: aviso al llegar (GPS) y modo dormir ----
+    void cambiarFuncion(String k) {
+        if (k.equals("f_casa")) { guardarCasa(); return; }
+        boolean on = !prefs.getBoolean(k, false);
+        if (on) {
+            java.util.List<String> faltan = new java.util.ArrayList<>();
+            if (k.equals("f_llegada")) { faltan.add(android.Manifest.permission.ACCESS_FINE_LOCATION); faltan.add(android.Manifest.permission.ACCESS_COARSE_LOCATION); }
+            if (k.equals("f_dormir")) faltan.add(android.Manifest.permission.ACTIVITY_RECOGNITION);
+            if (android.os.Build.VERSION.SDK_INT >= 33) faltan.add(android.Manifest.permission.POST_NOTIFICATIONS);
+            java.util.List<String> pedir = new java.util.ArrayList<>();
+            for (String x : faltan) if (checkSelfPermission(x) != android.content.pm.PackageManager.PERMISSION_GRANTED) pedir.add(x);
+            if (!pedir.isEmpty()) { pendiente = k; requestPermissions(pedir.toArray(new String[0]), PERMISOS); return; }
+            if (k.equals("f_llegada") && checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                vista.aviso("Elige: Permitir todo el tiempo");
+                requestPermissions(new String[]{android.Manifest.permission.ACCESS_BACKGROUND_LOCATION}, PERMISOS + 1);
+            }
+            if (k.equals("f_llegada") && !prefs.contains("casa_lat")) vista.aviso("Falta: Guardar mi casa aquí");
+        }
+        prefs.edit().putBoolean(k, on).apply();
+        Fondo.aplicar(this);
+        vibrar(new long[]{0, 25});
+        vista.invalidate();
+    }
+    String pendiente = null;
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req == PERMISOS && pendiente != null) {
+            boolean todos = true;
+            for (int x : res) if (x != android.content.pm.PackageManager.PERMISSION_GRANTED) todos = false;
+            String k = pendiente; pendiente = null;
+            if (todos) cambiarFuncion(k); else vista.aviso("Sin permiso no funciona");
+        }
+        Fondo.aplicar(this);
+    }
+    void guardarCasa() {
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            pendiente = null; requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION}, PERMISOS + 2); return;
+        }
+        vista.aviso("Buscando dónde estás…");
+        Fondo.ubicacion(this, loc -> main.post(() -> {
+            if (loc == null) { vista.aviso("No encontré la ubicación. Sal al patio y vuelve a tocar"); return; }
+            prefs.edit().putFloat("casa_lat", (float) loc.getLatitude()).putFloat("casa_lon", (float) loc.getLongitude()).apply();
+            vista.aviso("Casa guardada ✓");
+            Fondo.aplicar(this);
+            vista.invalidate();
+        }));
     }
 
     // ---- Tele (Samsung por SmartThings) ----

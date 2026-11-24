@@ -55,8 +55,39 @@ public class CasaView extends View {
     };
     static final int N = CUARTOS.length;
     // Orden: casa 3D, fachada, cámaras, tele, alarma y modo primero; luego los cuartos y al final Llegando y Me voy
-    static final int P_CASA = 0, P_FACHADA = 1, P_CAM = 2, P_TELE = 3, P_ALARMA = 4, P_MODO = 5, P_CUARTO1 = 6,
-        P_LLEGANDO = N + 6, P_MEVOY = N + 7, PAGINAS = N + 8;
+    static final int P_CASA = 0, P_VOZ = 1, P_FACHADA = 2, P_CAM = 3, P_TELE = 4, P_RADAR = 5, P_ALARMA = 6, P_MODO = 7, P_CUARTO1 = 8,
+        P_LLEGANDO = N + 8, P_MEVOY = N + 9, P_FUNC = N + 10, PAGINAS = N + 11;
+
+    // Voz
+    String vozDije = null, vozResp = null;
+    boolean vozOk = true, vozEsperando = false;
+
+    // Radar: sensores (mismas posiciones que en la app, en % de la casa) y cuándo detectaron algo
+    static final Object[][] SENS = {
+        {"sen_puerta", "Puerta", 11.4f, 41f, true}, {"sen_patio", "Patio", 76.5f, 44f, true},
+        {"mov_bano", "Baño", 47f, 32.5f, false}, {"mov_pasillo", "Pasillo", 57f, 33.5f, false}};
+    final Map<String, Long> movT = new HashMap<>();
+    String personaCam = null; long personaT = 0; String personaQuien = "";
+
+    // Perilla: mantener presionado un cuarto y girar el bisel para el brillo
+    String perilla = null; int perillaPct = 50; long perillaT = 0;
+    final Map<String, Integer> brillo = new HashMap<>();
+    final Runnable largo = new Runnable() { @Override public void run() {
+        if (moviendo || pagina < P_CUARTO1 || pagina >= P_LLEGANDO) return;
+        String z = (String) CUARTOS[pagina - P_CUARTO1][0];
+        if (z.equals("porton") || z.equals("puerta")) return;
+        perilla = z; perillaPct = brillo.containsKey(z) ? brillo.get(z) : 50; perillaT = System.currentTimeMillis(); largoUsado = true;
+        act.vibrar(new long[]{0, 40}); invalidate(); postDelayed(cierraPerilla, 4500);
+    } };
+    boolean largoUsado = false;
+    final Runnable cierraPerilla = new Runnable() { @Override public void run() {
+        if (perilla == null) return;
+        if (System.currentTimeMillis() - perillaT >= 4000) { perilla = null; invalidate(); } else postDelayed(this, 600);
+    } };
+    final Runnable mandaPerilla = new Runnable() { @Override public void run() { if (perilla != null) { brillo.put(perilla, perillaPct); act.mandarBrillo(perilla, perillaPct); } } };
+
+    // Funciones del reloj (se guardan en el reloj)
+    static final String[][] FUNCS = {{"f_llegada", "Aviso al llegar (GPS)"}, {"f_casa", "Guardar mi casa aquí"}, {"f_dormir", "Modo dormir"}};
 
     // Control de la tele (Samsung por SmartThings): botón -> comando, y dónde está en la pantalla (en % del reloj)
     static final Object[][] TELE = {
@@ -150,6 +181,7 @@ public class CasaView extends View {
     void ponerEstado(String zona, boolean on) {
         Long t = esperando.get(zona);
         if (t != null && System.currentTimeMillis() < t) return;   // acaba de cambiar desde aquí
+        if (zona.startsWith("mov_") && on) movT.put(zona, System.currentTimeMillis());
         Boolean antes = estado.put(zona, on);
         if (antes == null || antes != on) casaSucia = true;
         invalidate();
@@ -213,6 +245,7 @@ public class CasaView extends View {
             c.drawCircle(w / 2f, h / 2f, w / 2f - w * .02f, p);
             postInvalidateDelayed(400);
         }
+        if (perilla != null) dibujarPerilla(c, w, h);
         dibujarAviso(c, w, h);
     }
 
@@ -221,6 +254,9 @@ public class CasaView extends View {
         else if (i == P_FACHADA) dibujarFachada(c, w, h);
         else if (i == P_CAM) dibujarCam(c, w, h);
         else if (i == P_TELE) dibujarTele(c, w, h);
+        else if (i == P_VOZ) dibujarVoz(c, w, h);
+        else if (i == P_RADAR) dibujarRadar(c, w, h);
+        else if (i == P_FUNC) dibujarFunc(c, w, h);
         else if (i == P_ALARMA) dibujarAlarma(c, w, h);
         else if (i == P_MODO) dibujarModo(c, w, h);
         else if (i == P_LLEGANDO) dibujarLlegando(c, w, h);
@@ -425,6 +461,137 @@ public class CasaView extends View {
         texto(c, "Toca para cambiar", w / 2f, h * .925f, h * .036f, 0x88FFFFFF, false);
     }
 
+    // ---------------- voz ----------------
+    void ponerVoz(String dije, String resp, boolean ok) { vozDije = dije; vozResp = resp; vozOk = ok; vozEsperando = false; invalidate(); }
+    void vozMandando(String dije) { vozDije = dije; vozResp = null; vozEsperando = true; invalidate(); }
+
+    void dibujarVoz(Canvas c, int w, int h) {
+        texto(c, "Háblale a tu casa", w / 2f, h * .19f, h * .05f, GRIS, true);
+        float cx = w / 2f, cy = h * .42f, r = w * .15f;
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(vozEsperando ? 0xFF2F7DF6 : 0xFF1C2436);
+        c.drawCircle(cx, cy, r, p);
+        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(w * .012f); p.setColor(0x552F7DF6);
+        c.drawCircle(cx, cy, r * 1.22f, p);
+        // micrófono
+        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(w * .016f); p.setStrokeCap(Paint.Cap.ROUND); p.setColor(Color.WHITE);
+        float m = r * .32f;
+        c.drawRoundRect(new RectF(cx - m * .55f, cy - m * 1.3f, cx + m * .55f, cy + m * .35f), m * .55f, m * .55f, p);
+        c.drawArc(new RectF(cx - m, cy - m * .9f, cx + m, cy + m * .9f), 20, 140, false, p);
+        c.drawLine(cx, cy + m * .9f, cx, cy + m * 1.35f, p);
+        if (vozDije != null) texto(c, "“" + corta(vozDije, 26) + "”", w / 2f, h * .66f, h * .042f, 0xCCFFFFFF, false);
+        String r2 = vozEsperando ? "Haciéndolo…" : vozResp != null ? vozResp : "Toca y di: “apaga la sala”";
+        String[] ls = partir(r2, 24);
+        for (int i = 0; i < Math.min(ls.length, 3); i++)
+            texto(c, ls[i], w / 2f, h * (.75f + i * .06f), h * .045f, vozResp == null || vozEsperando ? 0x99FFFFFF : vozOk ? VERDE : NARANJA, vozResp != null);
+    }
+    static String corta(String t, int n) { return t.length() > n ? t.substring(0, n - 1) + "…" : t; }
+    static String[] partir(String t, int n) {
+        java.util.List<String> out = new java.util.ArrayList<>(); StringBuilder l = new StringBuilder();
+        for (String pal : t.split(" ")) { if (l.length() + pal.length() + 1 > n && l.length() > 0) { out.add(l.toString()); l = new StringBuilder(); } if (l.length() > 0) l.append(' '); l.append(pal); }
+        if (l.length() > 0) out.add(l.toString());
+        return out.toArray(new String[0]);
+    }
+
+    // ---------------- radar de la casa ----------------
+    void ponerPersona(String cam, String quien, long ts) { personaCam = cam; personaQuien = quien == null ? "" : quien; personaT = ts; invalidate(); }
+
+    void dibujarRadar(Canvas c, int w, int h) {
+        long ahora = System.currentTimeMillis();
+        texto(c, "Radar", w / 2f, h * .17f, h * .055f, VERDE, true);
+        if (casaSucia) componerCasa();
+        RectF r = new RectF();
+        if (casaBase != null) {
+            float cw = w * .94f, ch = cw * casaBase.getHeight() / casaBase.getWidth();
+            r.set((w - cw) / 2f, h * .46f - ch / 2f, (w + cw) / 2f, h * .46f + ch / 2f);
+            img.setAlpha(90); c.drawBitmap(casaBase, null, r, img); img.setAlpha(255);
+            // tinte verde de radar
+            p.setStyle(Paint.Style.FILL); p.setColor(0x2200FF88); c.drawRect(r, p);
+        }
+        // barrido
+        float ang = (ahora % 3000) / 3000f * 360f;
+        p.setStyle(Paint.Style.FILL);
+        p.setShader(new android.graphics.SweepGradient(w / 2f, h / 2f, new int[]{0x0000FF88, 0x0000FF88, 0x5500FF88}, new float[]{0f, .8f, 1f}));
+        c.save(); c.rotate(ang, w / 2f, h / 2f); c.drawCircle(w / 2f, h / 2f, w / 2f, p); c.restore();
+        p.setShader(null);
+        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.5f); p.setColor(0x3300FF88);
+        for (int i = 1; i <= 3; i++) c.drawCircle(w / 2f, h / 2f, w / 2f * i / 3.2f, p);
+        int activos = 0;
+        for (Object[] sd : SENS) {
+            String id = (String) sd[0]; boolean puerta = (Boolean) sd[4];
+            float x = r.left + r.width() * (Float) sd[2] / 100f, y = r.top + r.height() * (Float) sd[3] / 100f;
+            if (puerta) {
+                boolean abierta = Boolean.TRUE.equals(estado.get(id));
+                p.setStyle(Paint.Style.FILL); p.setColor(abierta ? ROJO : 0x6600FF88);
+                c.drawRoundRect(new RectF(x - w * .018f, y - w * .03f, x + w * .018f, y + w * .03f), 4, 4, p);
+                if (abierta) { activos++; texto(c, sd[1] + " abierta", x, y - w * .045f, h * .032f, ROJO, true); }
+            } else {
+                Long t = movT.get(id);
+                float edad = t == null ? 1e9f : (ahora - t) / 1000f;
+                if (Boolean.TRUE.equals(estado.get(id))) edad = 0;
+                if (edad < 90) {
+                    activos++;
+                    float f = 1f - edad / 90f, pulso = (ahora % 1200) / 1200f;
+                    p.setStyle(Paint.Style.FILL); p.setColor(Color.argb((int) (220 * f), 255, 214, 80)); c.drawCircle(x, y, w * .02f, p);
+                    p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3); p.setColor(Color.argb((int) (200 * f * (1 - pulso)), 255, 214, 80)); c.drawCircle(x, y, w * (.02f + .06f * pulso), p);
+                } else { p.setStyle(Paint.Style.FILL); p.setColor(0x5500FF88); c.drawCircle(x, y, w * .012f, p); }
+            }
+        }
+        // persona que vio una cámara (últimos 3 min)
+        if (personaCam != null && ahora - personaT < 180000) {
+            activos++;
+            float px = personaCam.contains("cochera") ? 21f : personaCam.contains("izq") ? 30f : 6f, py = personaCam.contains("cochera") ? 68f : 60f;
+            float x = r.left + r.width() * px / 100f, y = r.top + r.height() * py / 100f, pulso = (ahora % 900) / 900f;
+            p.setStyle(Paint.Style.FILL); p.setColor(0xFF5AA2FF); c.drawCircle(x, y, w * .022f, p);
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3); p.setColor(Color.argb((int) (220 * (1 - pulso)), 90, 162, 255)); c.drawCircle(x, y, w * (.022f + .07f * pulso), p);
+            long min = (ahora - personaT) / 60000;
+            texto(c, (personaQuien.isEmpty() ? "Persona" : personaQuien) + " · " + (min < 1 ? "ahorita" : "hace " + min + " min"), w / 2f, h * .76f, h * .04f, AZUL, true);
+        }
+        texto(c, activos == 0 ? "Todo tranquilo" : activos + (activos == 1 ? " cosa con movimiento" : " cosas con movimiento"), w / 2f, h * .84f, h * .04f, activos == 0 ? 0x99FFFFFF : AMBAR, activos > 0);
+        if (pagina == P_RADAR) postInvalidateDelayed(50);
+    }
+
+    // ---------------- perilla de brillo ----------------
+    void dibujarPerilla(Canvas c, int w, int h) {
+        p.setStyle(Paint.Style.FILL); p.setColor(0xCC000000); c.drawCircle(w / 2f, h / 2f, w / 2f, p);
+        float m = w * .06f;
+        RectF a = new RectF(m, m, w - m, h - m);
+        p.setStyle(Paint.Style.STROKE); p.setStrokeCap(Paint.Cap.ROUND); p.setStrokeWidth(w * .045f);
+        p.setColor(0x33FFC15E); c.drawArc(a, 135, 270, false, p);
+        p.setColor(AMBAR); c.drawArc(a, 135, 270 * perillaPct / 100f, false, p);
+        String nom = perilla;
+        for (Object[] cu : CUARTOS) if (cu[0].equals(perilla)) nom = (String) cu[1];
+        texto(c, nom, w / 2f, h * .36f, h * .05f, GRIS, true);
+        texto(c, perillaPct + "%", w / 2f, h * .56f, h * .16f, AMBAR, true);
+        texto(c, "Gira el bisel", w / 2f, h * .68f, h * .04f, 0x99FFFFFF, false);
+    }
+
+    // ---------------- funciones del reloj ----------------
+    void dibujarFunc(Canvas c, int w, int h) {
+        texto(c, "Funciones del reloj", w / 2f, h * .19f, h * .05f, GRIS, true);
+        for (int i = 0; i < FUNCS.length; i++) {
+            float y = h * (.33f + i * .17f);
+            RectF r = new RectF(w * .1f, y - h * .065f, w * .9f, y + h * .065f);
+            boolean on = act.prefs.getBoolean(FUNCS[i][0], false);
+            boolean boton = FUNCS[i][0].equals("f_casa");
+            p.setStyle(Paint.Style.FILL); p.setColor(boton ? 0xFF1C2436 : on ? 0xFF15402E : 0xFF1C2436);
+            c.drawRoundRect(r, h * .065f, h * .065f, p);
+            String sub = boton ? (act.prefs.contains("casa_lat") ? "Guardada ✓ (toca para cambiarla)" : "Párate en tu casa y toca")
+                : (on ? "Prendido" : "Apagado");
+            texto(c, FUNCS[i][1], w / 2f, y - h * .005f, h * .042f, TINTA, true);
+            texto(c, sub, w / 2f, y + h * .04f, h * .032f, boton ? 0x99FFFFFF : on ? VERDE : 0x88FFFFFF, false);
+        }
+        texto(c, "El timbre llega por el teléfono", w / 2f, h * .86f, h * .032f, 0x77FFFFFF, false);
+    }
+    boolean tocarFunc(float x, float y) {
+        int h = getHeight();
+        for (int i = 0; i < FUNCS.length; i++) {
+            float fy = h * (.33f + i * .17f);
+            if (Math.abs(y - fy) < h * .075f) { act.cambiarFuncion(FUNCS[i][0]); invalidate(); return true; }
+        }
+        return false;
+    }
+
     // ---------------- control de la tele ----------------
     void ponerTele(boolean on) { teleOn = on; invalidate(); }
 
@@ -619,11 +786,13 @@ public class CasaView extends View {
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 if (anim != null) anim.cancel();
-                arrastre = 0; xIni = e.getX(); yIni = e.getY(); moviendo = false;
+                arrastre = 0; xIni = e.getX(); yIni = e.getY(); moviendo = false; largoUsado = false;
+                removeCallbacks(largo);
+                if (perilla == null && pagina >= P_CUARTO1 && pagina < P_LLEGANDO) postDelayed(largo, 650);
                 return true;
             case MotionEvent.ACTION_MOVE:
                 float dx = e.getX() - xIni;
-                if (!moviendo && Math.abs(dx) > slop) moviendo = true;
+                if (!moviendo && Math.abs(dx) > slop) { moviendo = true; removeCallbacks(largo); }
                 if (moviendo) {
                     if ((pagina == 0 && dx > 0) || (pagina == PAGINAS - 1 && dx < 0)) dx *= .3f;
                     arrastre = dx;
@@ -634,6 +803,8 @@ public class CasaView extends View {
                 vt.computeCurrentVelocity(1000);
                 float v = vt.getXVelocity();
                 vt.recycle(); vt = null;
+                removeCallbacks(largo);
+                if (largoUsado) { largoUsado = false; return true; }   // fue para abrir la perilla
                 if (moviendo) {
                     int dir = 0;
                     if (arrastre < -getWidth() * .22f || v < -900) dir = 1;
@@ -679,7 +850,11 @@ public class CasaView extends View {
             invalidate();
             return;
         }
+        if (perilla != null) { perilla = null; invalidate(); return; }
         if (pagina == P_TELE) { tocarTele(x, y); return; }
+        if (pagina == P_VOZ) { act.escuchar(); return; }
+        if (pagina == P_FUNC) { tocarFunc(x, y); return; }
+        if (pagina == P_RADAR) return;
         if (pagina == P_CAM) {
             cam = (cam + 1) % CAMS.length;
             camFoto = null; camHora = 0; camError = null;
@@ -728,6 +903,17 @@ public class CasaView extends View {
         if (e.getAction() != MotionEvent.ACTION_SCROLL || !e.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER) || pidiendoPin) return false;
         float v = -e.getAxisValue(MotionEvent.AXIS_SCROLL);
         if (Math.abs(v) < 0.001f) v = -e.getAxisValue(MotionEvent.AXIS_VSCROLL);
+        if (perilla != null) {
+            giro += v;
+            if (Math.abs(giro) >= 0.25f) {
+                perillaPct = Math.max(1, Math.min(100, perillaPct + (giro > 0 ? 5 : -5)));
+                giro = 0; perillaT = System.currentTimeMillis();
+                performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
+                removeCallbacks(mandaPerilla); postDelayed(mandaPerilla, 350);
+                invalidate();
+            }
+            return true;
+        }
         giro += v;
         if (Math.abs(giro) >= 0.5f) {
             int dir = giro > 0 ? 1 : -1;
